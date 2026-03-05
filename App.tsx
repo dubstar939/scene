@@ -1,0 +1,1502 @@
+
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents, Polyline } from 'react-leaflet';
+import L from 'leaflet';
+import { io, Socket } from 'socket.io-client';
+import { 
+  LogIn, Users, MapPin, Navigation, X, Save, Ghost, Shield, ShieldAlert, 
+  ShieldCheck, UserCheck, Eye, EyeOff, Facebook, Bell, Power,
+  MessageSquare, Send, CornerUpLeft, WifiOff, Share2, Copy,
+  AlertTriangle, UserPlus, LogOut, ArrowLeft, Loader2, Search, ExternalLink, Settings, Lock,
+  Car, CheckCircle2, Calendar, Clock, Plus, Trash2, ChevronRight
+} from 'lucide-react';
+import { Member, Spot, PrivacySettings, Conversation, Message, Cruise, Reminder } from './types';
+import { GoogleGenAI } from "@google/genai";
+
+// Custom Member Map Icon based on status
+const createMemberMapIcon = (member: Member) => {
+  let iconHtml = '';
+  let bgColor = '';
+  let borderColor = 'border-white';
+  let iconComponent = '';
+  let size = 'w-8 h-8';
+  let ring = '';
+
+  switch (member.status) {
+    case 'Cruising':
+      bgColor = 'bg-emerald-500';
+      iconComponent = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"></polygon></svg>`;
+      ring = 'animate-pulse';
+      break;
+    case 'Parked':
+      bgColor = 'bg-slate-600';
+      iconComponent = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>`;
+      break;
+    case 'Heading to meet':
+      bgColor = 'bg-blue-500';
+      iconComponent = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>`;
+      break;
+    case 'At Meetup':
+      bgColor = 'bg-purple-600';
+      iconComponent = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 18a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2"/><rect x="9" y="9" width="6" height="4" rx="1"/><path d="M12 2L4 5l8 3 8-3-8-3z"/></svg>`;
+      size = 'w-9 h-9';
+      break;
+    case 'On Detour':
+      bgColor = 'bg-yellow-500';
+      iconComponent = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
+      borderColor = 'border-black';
+      break;
+    default:
+      return null;
+  }
+
+  iconHtml = `<div class="${size} rounded-full border-2 ${borderColor} shadow-lg flex items-center justify-center transition-all duration-500 ${ring}" style="background-color: ${bgColor};">
+                ${iconComponent}
+              </div>`;
+
+  return L.divIcon({
+    html: iconHtml,
+    className: '',
+    iconSize: [36, 36],
+    iconAnchor: [18, 18],
+  });
+};
+
+const createWaypointIcon = (index: number) => L.divIcon({
+  html: `<div class="w-8 h-8 rounded-full bg-indigo-600 border-2 border-white shadow-lg flex items-center justify-center font-bold text-white text-sm">${index + 1}</div>`,
+  className: '',
+  iconSize: [32, 32],
+  iconAnchor: [16, 16],
+});
+
+const DEFAULT_CENTER: [number, number] = [30.4213, -87.2169]; // Pensacola, FL
+
+const MapViewUpdater = ({ center }: { center: [number, number] }) => {
+  const map = useMap();
+  useEffect(() => {
+    map.setView(center, 13);
+  }, [center, map]);
+  return null;
+};
+
+const MapEventsHandler = ({ onMapClick, isAddingWaypoint }: { onMapClick: (latlng: L.LatLng) => void, isAddingWaypoint: boolean }) => {
+  useMapEvents({
+    click(e) {
+      if (isAddingWaypoint) {
+        onMapClick(e.latlng);
+      }
+    }
+  });
+  return null;
+};
+
+const CruisePolyline = ({ route }: { route: [number, number][] }) => {
+  if (route.length < 2) return null;
+  return <Polyline pathOptions={{ color: '#4f46e5', weight: 6, opacity: 0.8, lineCap: 'round', lineJoin: 'round' }} positions={route} />;
+};
+
+const App: React.FC = () => {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [loginMode, setLoginMode] = useState<'initial' | 'email-login' | 'email-signup'>('initial');
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [guestUsername, setGuestUsername] = useState('');
+  const [guestAvatar, setGuestAvatar] = useState<string | null>(null);
+
+  const [emailForm, setEmailForm] = useState({
+    email: '',
+    password: '',
+    name: '',
+    avatar: '',
+    rememberMe: false
+  });
+
+  const [resetSent, setResetSent] = useState(false);
+
+  const [currentUser, setCurrentUser] = useState<Member | null>(null);
+  const [currentUserLocation, setCurrentUserLocation] = useState<[number, number] | null>(null);
+  const [mapDisplayCenter, setMapDisplayCenter] = useState<[number, number]>(DEFAULT_CENTER);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [activeTab, setActiveTab] = useState<'members' | 'chat' | 'discover' | 'privacy' | 'cruise' | 'reminders' | 'profile'>('members');
+  const [shareFeedback, setShareFeedback] = useState<string | null>(null);
+  
+  // Profile Edit State
+  const [profileForm, setProfileForm] = useState({
+    name: '',
+    car: '',
+    avatar: ''
+  });
+  
+  const [activeNotifications, setActiveNotifications] = useState<Reminder[]>([]);
+
+  // Reminders States
+  const [reminders, setReminders] = useState<Reminder[]>(() => {
+    const saved = localStorage.getItem('scene_reminders');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [isAddingReminder, setIsAddingReminder] = useState(false);
+  const [newReminder, setNewReminder] = useState<Partial<Reminder>>({
+    title: '',
+    date: '',
+    time: '',
+    type: 'Meetup',
+    alertBefore: '1h'
+  });
+
+  useEffect(() => {
+    const checkReminders = () => {
+      const now = new Date();
+      setReminders(prev => {
+        let changed = false;
+        const updated = prev.map(rem => {
+          if (rem.isCompleted || rem.alertFired || rem.alertBefore === 'none') return rem;
+
+          const eventTime = new Date(`${rem.date} ${rem.time}`);
+          const diffMs = eventTime.getTime() - now.getTime();
+          const diffHours = diffMs / (1000 * 60 * 60);
+
+          let shouldAlert = false;
+          if (rem.alertBefore === '1h' && diffHours <= 1 && diffHours > 0) shouldAlert = true;
+          if (rem.alertBefore === '1d' && diffHours <= 24 && diffHours > 0) shouldAlert = true;
+
+          if (shouldAlert) {
+            setActiveNotifications(prevNotif => [...prevNotif, rem]);
+            changed = true;
+            return { ...rem, alertFired: true };
+          }
+          return rem;
+        });
+        return changed ? updated : prev;
+      });
+    };
+
+    const interval = setInterval(checkReminders, 60000); // Check every minute
+    checkReminders(); // Initial check
+    return () => clearInterval(interval);
+  }, []);
+
+  const dismissNotification = (id: string) => {
+    setActiveNotifications(prev => prev.filter(n => n.id !== id));
+  };
+
+  // Discover/Search States
+  const [discoverSearchQuery, setDiscoverSearchQuery] = useState('');
+  const [memberSearchQuery, setMemberSearchQuery] = useState('');
+  const [isSearchingMaps, setIsSearchingMaps] = useState(false);
+  const [mapsGroundingResults, setMapsGroundingResults] = useState<{text: string, chunks: any[]}>({text: '', chunks: []});
+
+  // Chat States
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [messageInput, setMessageInput] = useState('');
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Privacy States
+  const [privacy, setPrivacy] = useState<PrivacySettings>({
+    ghostMode: false,
+    visibility: 'everyone'
+  });
+
+  // Cruise State
+  const [cruise, setCruise] = useState<Cruise>({ isActive: false, leaderId: null, route: [] });
+  const locationWatchId = useRef<number | null>(null);
+  const socketRef = useRef<Socket | null>(null);
+  const [isAddingWaypoint, setIsAddingWaypoint] = useState(false);
+
+  const STATUS_OPTIONS: Member['status'][] = ['Cruising', 'Parked', 'Heading to meet', 'At Meetup', 'On Detour', 'Offline'];
+
+  // Persist Reminders
+  useEffect(() => {
+    localStorage.setItem('scene_reminders', JSON.stringify(reminders));
+  }, [reminders]);
+
+  // Listen for OAuth success message from popup
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      // Validate origin
+      const origin = event.origin;
+      if (!origin.endsWith('.run.app') && !origin.includes('localhost')) {
+        return;
+      }
+
+      if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
+        const userData = event.data.user;
+        const provider = event.data.provider || 'facebook';
+        if (userData) {
+          completeLogin(
+            `${provider === 'google' ? 'gl' : 'fb'}-${userData.id}`,
+            userData.name,
+            userData.picture.data.url,
+            `${provider === 'google' ? 'Google' : 'Facebook'} Verified Driver`
+          );
+        }
+      } else if (event.data?.type === 'OAUTH_AUTH_ERROR') {
+        setIsLoggingIn(false);
+        setLoginError(`Login failed: ${event.data.error}`);
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
+  // Scroll to bottom of chat when new messages arrive
+  useEffect(() => {
+    if (activeTab === 'chat' && messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [conversations, activeConversationId, activeTab]);
+
+  useEffect(() => {
+    if (isLoggedIn && currentUser) {
+      const groupChat: Conversation = {
+        id: 'group',
+        name: 'Panhandle Pop-Up Meets',
+        avatar: 'https://placehold.co/100x100/3730a3/FFFFFF?text=P',
+        participants: [currentUser],
+        messages: [],
+        unreadCount: 0,
+      };
+      setConversations([groupChat]);
+      setActiveConversationId(null);
+    }
+  }, [isLoggedIn, currentUser]);
+  
+  const startLocationWatch = useCallback((memberId: string) => {
+    if (locationWatchId.current !== null) {
+      navigator.geolocation.clearWatch(locationWatchId.current);
+    }
+    locationWatchId.current = navigator.geolocation.watchPosition(
+      (watchPos) => {
+        const newLocation: [number, number] = [watchPos.coords.latitude, watchPos.coords.longitude];
+        setCurrentUserLocation(newLocation);
+        
+        // Emit to server
+        if (socketRef.current) {
+          socketRef.current.emit('update_location', { location: newLocation });
+        }
+
+        setMembers(prevMembers => prevMembers.map(m =>
+          m.id === memberId ? { ...m, location: newLocation, lastSeen: new Date().toLocaleTimeString() } : m
+        ));
+        if (cruise.leaderId === memberId) {
+          setCruise(prev => ({ ...prev, route: [...prev.route, newLocation] }));
+          setMapDisplayCenter(newLocation);
+        }
+      },
+      (err) => console.error("Error watching position:", err),
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+    );
+  }, [cruise.leaderId]);
+
+  useEffect(() => {
+    // Check for remembered user
+    const savedUser = localStorage.getItem('scene_remembered_user');
+    if (savedUser) {
+      try {
+        const { id, name, avatar, car } = JSON.parse(savedUser);
+        completeLogin(id, name, avatar, car);
+      } catch (e) {
+        localStorage.removeItem('scene_remembered_user');
+      }
+    }
+  }, []);
+
+  const completeLogin = (id: string, name: string, avatar: string, car: string) => {
+    setIsLoggedIn(true);
+    setIsLoggingIn(false);
+
+    if (emailForm.rememberMe) {
+      localStorage.setItem('scene_remembered_user', JSON.stringify({ id, name, avatar, car }));
+    }
+
+    // Initialize Socket
+    const socket = io();
+    socketRef.current = socket;
+
+    socket.on('members_update', (updatedMembers: Member[]) => {
+      setMembers(updatedMembers);
+    });
+
+    socket.on('member_moved', (updatedMember: Member) => {
+      setMembers(prev => prev.map(m => m.id === updatedMember.id ? updatedMember : m));
+    });
+
+    socket.on('new_message', (msg: Message) => {
+      setConversations(prev => prev.map(c => c.id === 'group' ? { ...c, messages: [...c.messages, msg] } : c));
+    });
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const initialLocation: [number, number] = [pos.coords.latitude, pos.coords.longitude];
+        setCurrentUserLocation(initialLocation);
+        setMapDisplayCenter(initialLocation);
+
+        const newCurrentUser: Member = {
+          id,
+          name,
+          car,
+          location: initialLocation,
+          status: 'Cruising',
+          avatar,
+          lastSeen: new Date().toLocaleTimeString(),
+          isFavorite: false,
+        };
+        setCurrentUser(newCurrentUser);
+        setProfileForm({
+          name: newCurrentUser.name,
+          car: newCurrentUser.car || '',
+          avatar: newCurrentUser.avatar
+        });
+        
+        socket.emit('join_scene', newCurrentUser);
+        startLocationWatch(newCurrentUser.id);
+      },
+      () => {
+        const newCurrentUser: Member = {
+          id,
+          name,
+          car,
+          location: DEFAULT_CENTER,
+          status: 'Cruising',
+          avatar,
+          lastSeen: new Date().toLocaleTimeString(),
+          isFavorite: false,
+        };
+        setCurrentUser(newCurrentUser);
+        setProfileForm({
+          name: newCurrentUser.name,
+          car: newCurrentUser.car || '',
+          avatar: newCurrentUser.avatar
+        });
+        setCurrentUserLocation(DEFAULT_CENTER);
+        setMapDisplayCenter(DEFAULT_CENTER);
+        
+        socket.emit('join_scene', newCurrentUser);
+      }
+    );
+  };
+
+  const handleGoogleLogin = async () => {
+    setLoginError(null);
+    setIsLoggingIn(true);
+
+    try {
+      const response = await fetch('/api/auth/google/url');
+      if (!response.ok) throw new Error('Failed to get Google auth URL');
+      const { url } = await response.json();
+
+      const width = 600;
+      const height = 700;
+      const left = window.screenX + (window.outerWidth - width) / 2;
+      const top = window.screenY + (window.outerHeight - height) / 2;
+
+      window.open(url, 'google_oauth_popup', `width=${width},height=${height},left=${left},top=${top}`);
+    } catch (error: any) {
+      setIsLoggingIn(false);
+      setLoginError(error.message || "Failed to initiate Google login.");
+    }
+  };
+
+  const handleFacebookLogin = async () => {
+    setLoginError(null);
+    setIsLoggingIn(true);
+
+    try {
+      const response = await fetch('/api/auth/facebook/url');
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to get auth URL');
+      }
+      const { url } = await response.json();
+
+      const width = 600;
+      const height = 700;
+      const left = window.screenX + (window.outerWidth - width) / 2;
+      const top = window.screenY + (window.outerHeight - height) / 2;
+
+      const authWindow = window.open(
+        url,
+        'facebook_oauth_popup',
+        `width=${width},height=${height},left=${left},top=${top}`
+      );
+
+      if (!authWindow) {
+        setIsLoggingIn(false);
+        setLoginError("Popup was blocked. Please allow popups for this site.");
+      }
+    } catch (error: any) {
+      setIsLoggingIn(false);
+      setLoginError(error.message || "Failed to initiate Facebook login.");
+    }
+  };
+
+  const handleGuestLogin = () => {
+    if (!guestUsername.trim()) {
+      setLoginError('Guest username cannot be empty.');
+      return;
+    }
+    setLoginError(null);
+    setIsLoggingIn(true);
+    const id = `guest-${guestUsername.trim().replace(/\s+/g, '-')}-${Date.now()}`;
+    const avatar = guestAvatar || `https://i.pravatar.cc/150?u=${id}`;
+    setTimeout(() => {
+      completeLogin(id, guestUsername.trim(), avatar, 'Guest Member');
+    }, 1000);
+  };
+
+  const handleEmailAuth = async (mode: 'login' | 'signup') => {
+    setLoginError(null);
+    setIsLoggingIn(true);
+    try {
+      const endpoint = mode === 'login' ? '/api/auth/email/login' : '/api/auth/email/signup';
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(emailForm)
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Authentication failed');
+      
+      completeLogin(data.user.id, data.user.name, data.user.avatar, data.user.car);
+    } catch (error: any) {
+      setIsLoggingIn(false);
+      setLoginError(error.message);
+    }
+  };
+
+  const handleForgotPassword = () => {
+    if (!emailForm.email.trim()) {
+      setLoginError('Please enter your email address first.');
+      return;
+    }
+    setResetSent(true);
+    setLoginError(null);
+    setTimeout(() => setResetSent(false), 5000);
+  };
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, target: 'guest' | 'profile' | 'email') => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      setLoginError("File size too large (max 2MB)");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64String = reader.result as string;
+      if (target === 'guest') setGuestAvatar(base64String);
+      if (target === 'profile') setProfileForm(prev => ({ ...prev, avatar: base64String }));
+      if (target === 'email') setEmailForm(prev => ({ ...prev, avatar: base64String }));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('scene_remembered_user');
+    if (locationWatchId.current !== null) {
+      navigator.geolocation.clearWatch(locationWatchId.current);
+      locationWatchId.current = null;
+    }
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+      socketRef.current = null;
+    }
+    setIsLoggedIn(false);
+    setCurrentUser(null);
+    setCurrentUserLocation(null);
+    setMembers([]);
+    setCruise({ isActive: false, leaderId: null, route: [] });
+  };
+
+  const handleSearchWithMaps = async () => {
+    if (!discoverSearchQuery.trim()) return;
+    setIsSearchingMaps(true);
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const lat = currentUserLocation?.[0] || DEFAULT_CENTER[0];
+      const lng = currentUserLocation?.[1] || DEFAULT_CENTER[1];
+
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: `Find car-related spots or meet areas matching: "${discoverSearchQuery}" near my current location. Provide descriptions and list the places.`,
+        config: {
+          tools: [{ googleMaps: {} }],
+          toolConfig: {
+            retrievalConfig: {
+              latLng: {
+                latitude: lat,
+                longitude: lng
+              }
+            }
+          }
+        },
+      });
+
+      const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+      setMapsGroundingResults({
+        text: response.text || "No details found.",
+        chunks: chunks
+      });
+    } catch (error) {
+      console.error("Maps search failed:", error);
+      setMapsGroundingResults({ text: "Search failed. Check your connection.", chunks: [] });
+    } finally {
+      setIsSearchingMaps(false);
+    }
+  };
+
+  const handleStartCruise = () => {
+    if (!currentUserLocation || !currentUser) return;
+    setCruise({ isActive: true, leaderId: currentUser.id, route: [currentUserLocation] });
+    setMapDisplayCenter(currentUserLocation);
+    setActiveTab('cruise');
+    startLocationWatch(currentUser.id);
+  };
+
+  const handleEndCruise = () => {
+    if (!currentUser) return;
+    setCruise({ isActive: false, leaderId: null, route: [] });
+    if (currentUser.status !== 'Offline' && currentUserLocation) {
+        startLocationWatch(currentUser.id);
+    }
+  };
+
+  const handleAddWaypoint = (latlng: L.LatLng) => {
+    if (!currentUser) return;
+    if (cruise.isActive && cruise.leaderId === currentUser.id) {
+      setCruise(prev => ({
+        ...prev,
+        route: [...prev.route, [latlng.lat, latlng.lng]]
+      }));
+      setIsAddingWaypoint(false);
+    }
+  };
+
+  const handleStartDM = (member: Member) => {
+    if (!currentUser) return;
+    const conversationId = member.id;
+    const existing = conversations.find(c => c.id === conversationId);
+    
+    if (!existing) {
+      const newDM: Conversation = {
+        id: conversationId,
+        name: member.name,
+        avatar: member.avatar,
+        participants: [currentUser, member],
+        messages: [],
+        unreadCount: 0
+      };
+      setConversations(prev => [...prev, newDM]);
+    }
+    setActiveConversationId(conversationId);
+    setActiveTab('chat');
+  };
+
+  const handleSendMessage = () => {
+    if (!messageInput.trim() || !activeConversationId || !currentUser) return;
+    const newMessage: Message = {
+      id: `msg-${Date.now()}`,
+      senderId: currentUser.id,
+      senderName: currentUser.name,
+      senderAvatar: currentUser.avatar,
+      text: messageInput,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+    
+    if (activeConversationId === 'group' && socketRef.current) {
+      socketRef.current.emit('send_message', newMessage);
+    } else {
+      setConversations(conversations.map(c => c.id === activeConversationId ? { ...c, messages: [...c.messages, newMessage] } : c));
+    }
+    setMessageInput('');
+  };
+
+  const handleShareLocation = (conversationId: string) => {
+    if (!currentUser || !currentUserLocation) return;
+    const [lat, lng] = currentUserLocation;
+    const shareLink = `Check out my live location on Scene: https://www.google.com/maps?q=${lat},${lng}`;
+    
+    const newMessage: Message = {
+      id: `loc-share-${Date.now()}`,
+      senderId: currentUser.id,
+      senderName: currentUser.name,
+      senderAvatar: currentUser.avatar,
+      text: shareLink,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+
+    setConversations(prev => prev.map(c => 
+      c.id === conversationId ? { ...c, messages: [...c.messages, newMessage] } : c
+    ));
+
+    const conversationName = conversations.find(c => c.id === conversationId)?.name || 'Group';
+    setShareFeedback(`Location shared to ${conversationName}`);
+    setTimeout(() => setShareFeedback(null), 3000);
+  };
+
+  const handleIndividualShare = (member: Member) => {
+    if (!currentUser) return;
+    handleStartDM(member);
+    handleShareLocation(member.id);
+  };
+
+  const handleUpdateProfile = () => {
+    if (!currentUser) return;
+    const updatedUser: Member = {
+      ...currentUser,
+      name: profileForm.name || currentUser.name,
+      car: profileForm.car,
+      avatar: profileForm.avatar || currentUser.avatar
+    };
+    setCurrentUser(updatedUser);
+    setMembers(prev => prev.map(m => m.id === currentUser.id ? updatedUser : m));
+    setShareFeedback("Profile Updated Successfully");
+    setTimeout(() => setShareFeedback(null), 3000);
+    setActiveTab('members');
+  };
+
+  const handleStatusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    if (!currentUser) return;
+    const newStatus = e.target.value as Member['status'];
+    const updatedUser = { ...currentUser, status: newStatus };
+    setCurrentUser(updatedUser);
+    setMembers(members.map(m => m.id === currentUser.id ? updatedUser : m));
+    if (newStatus === 'Offline') {
+      if (locationWatchId.current !== null) {
+        navigator.geolocation.clearWatch(locationWatchId.current);
+        locationWatchId.current = null;
+      }
+      if (cruise.isActive && cruise.leaderId === currentUser.id) handleEndCruise();
+    } else {
+      if (locationWatchId.current === null && currentUserLocation) startLocationWatch(currentUser.id);
+    }
+  };
+
+  const handleAddReminder = () => {
+    if (!newReminder.title || !newReminder.date || !newReminder.time) return;
+    const reminder: Reminder = {
+      id: `rem-${Date.now()}`,
+      title: newReminder.title,
+      date: newReminder.date,
+      time: newReminder.time,
+      type: (newReminder.type as Reminder['type']) || 'Meetup',
+      alertBefore: (newReminder.alertBefore as Reminder['alertBefore']) || '1h',
+      isCompleted: false,
+      alertFired: false
+    };
+    setReminders(prev => [...prev, reminder].sort((a, b) => new Date(`${a.date} ${a.time}`).getTime() - new Date(`${b.date} ${b.time}`).getTime()));
+    setIsAddingReminder(false);
+    setNewReminder({ title: '', date: '', time: '', type: 'Meetup', alertBefore: '1h' });
+  };
+
+  const handleDeleteReminder = (id: string) => {
+    setReminders(prev => prev.filter(r => r.id !== id));
+  };
+
+  const userMarkerIcon = useMemo(() => {
+    if (!currentUser) return null;
+    const isGhost = privacy.ghostMode;
+    const opacity = isGhost ? 'opacity-30' : 'opacity-100';
+    const bgColor = isGhost ? 'bg-slate-700' : 'bg-indigo-500';
+    const ringPulse = isGhost ? '' : 'animate-pulse';
+    const iconHtml = `
+      <div class="relative w-10 h-10 rounded-full ${bgColor} border-4 border-white shadow-2xl flex items-center justify-center transition-all duration-700 ${opacity} ${ringPulse}">
+        <img src="${currentUser.avatar}" class="w-full h-full rounded-full object-cover p-0.5"/>
+        ${isGhost ? `<div class="absolute -top-1 -right-1 bg-slate-900 rounded-full p-0.5 border border-white/20"><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 10h.01"/><path d="M15 10h.01"/><path d="M12 2a8 8 0 0 0-8 8v12l3-3 2.5 2.5L12 19l2.5 2.5L17 19l3 3V10a8 8 0 0 0-8-8z"/></svg></div>` : ''}
+      </div>`;
+    return L.divIcon({ html: iconHtml, className: '', iconSize: [40, 40], iconAnchor: [20, 20] });
+  }, [privacy.ghostMode, cruise.isActive, cruise.leaderId, currentUser]);
+
+  if (!isLoggedIn) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full bg-[#020617] text-slate-50 p-6 text-center overflow-hidden">
+        {isLoggingIn ? (
+          <div className="flex flex-col items-center animate-in zoom-in fade-in duration-700">
+            <div className="relative mb-12"> <div className="w-24 h-24 border-b-4 border-indigo-500 border-solid rounded-full animate-spin"></div> <div className="absolute inset-0 flex items-center justify-center"> <Loader2 className="text-indigo-400 w-8 h-8 animate-pulse" /> </div> </div>
+            <h2 className="text-3xl font-black mb-2 italic tracking-tighter uppercase tracking-widest">Scene</h2>
+            <p className="text-slate-400 font-bold uppercase text-[10px] tracking-widest">Authenticating...</p>
+          </div>
+        ) : (
+          <div className="max-w-xl w-full max-h-full overflow-y-auto no-scrollbar py-10">
+            <div className="mb-12 relative flex items-center justify-center gap-4">
+              <Users className="w-20 h-20 text-indigo-500" />
+              <div className="text-left">
+                <p className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.4em]">Official App</p>
+                <h1 className="text-7xl font-black tracking-tighter uppercase italic leading-none">Scene</h1>
+              </div>
+            </div>
+            
+            {loginMode === 'initial' && (
+              <div className="space-y-6">
+                <button 
+                  onClick={handleGoogleLogin} 
+                  className="w-full flex items-center justify-center gap-4 bg-white hover:bg-slate-100 text-slate-900 px-10 py-6 rounded-[2rem] font-black transition-all shadow-xl active:scale-95 group border border-slate-200"
+                >
+                  <div className="bg-white p-1 rounded-lg group-hover:scale-110 transition-transform">
+                      <svg width="24" height="24" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+                  </div>
+                  Continue with Google
+                </button>
+
+                <button 
+                  onClick={handleFacebookLogin} 
+                  className="w-full flex items-center justify-center gap-4 bg-[#1877F2] hover:bg-[#166fe5] text-white px-10 py-6 rounded-[2rem] font-black transition-all shadow-xl active:scale-95 group"
+                >
+                  <div className="bg-white p-1 rounded-lg group-hover:scale-110 transition-transform">
+                      <Facebook className="w-6 h-6 text-[#1877F2] fill-[#1877F2]" />
+                  </div>
+                  Secure Facebook Sign In
+                </button>
+
+                <button 
+                  onClick={() => setLoginMode('email-login')}
+                  className="w-full flex items-center justify-center gap-4 bg-slate-800 hover:bg-slate-700 text-white px-10 py-6 rounded-[2rem] font-black transition-all shadow-xl active:scale-95 group border border-white/5"
+                >
+                  <LogIn className="w-6 h-6 text-indigo-400" />
+                  Sign In with Email
+                </button>
+
+                <button 
+                  onClick={() => setLoginMode('email-signup')}
+                  className="w-full flex items-center justify-center gap-4 bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 px-10 py-6 rounded-[2rem] font-black transition-all shadow-xl active:scale-95 group border border-indigo-500/20"
+                >
+                  <UserPlus className="w-6 h-6 text-indigo-400" />
+                  Create New Profile
+                </button>
+
+                <div className="relative flex items-center py-4">
+                  <div className="flex-grow border-t border-slate-800"></div>
+                  <span className="flex-shrink mx-4 text-slate-500 font-black uppercase text-[10px] tracking-widest">or browse as guest</span>
+                  <div className="flex-grow border-t border-slate-800"></div>
+                </div>
+
+                <div className="space-y-4 bg-slate-900/50 p-6 rounded-3xl border border-white/5">
+                  <div className="flex flex-col items-center gap-4 mb-2">
+                    <div className="relative group">
+                      <img 
+                        src={guestAvatar || "https://placehold.co/150x150/1e293b/FFFFFF?text=?"} 
+                        className="w-20 h-20 rounded-full object-cover border-2 border-indigo-500/50"
+                      />
+                      <label className="absolute inset-0 flex items-center justify-center bg-black/60 rounded-full opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity">
+                        <Plus className="text-white" />
+                        <input type="file" accept="image/*" className="hidden" onChange={(e) => handleFileChange(e, 'guest')} />
+                      </label>
+                    </div>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase">Upload Guest Photo</p>
+                  </div>
+                  <input 
+                    type="text" 
+                    placeholder="Guest Username" 
+                    value={guestUsername} 
+                    onChange={(e) => setGuestUsername(e.target.value)} 
+                    className="w-full bg-slate-800/50 border border-slate-700 rounded-2xl py-4 px-6 text-base outline-none focus:border-indigo-500 transition-colors" 
+                  />
+                  <button 
+                    onClick={handleGuestLogin} 
+                    className="w-full flex items-center justify-center gap-4 bg-indigo-600 hover:bg-indigo-500 text-white px-10 py-5 rounded-[2rem] font-black shadow-xl active:scale-95 border border-white/5"
+                  >
+                    <UserPlus className="w-6 h-6" /> Join Scene
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {(loginMode === 'email-login' || loginMode === 'email-signup') && (
+              <div className="space-y-6 animate-in slide-in-from-right duration-300">
+                <button onClick={() => setLoginMode('initial')} className="flex items-center gap-2 text-slate-400 hover:text-white font-bold uppercase text-[10px] tracking-widest mb-4">
+                  <ArrowLeft size={14} /> Back to options
+                </button>
+                
+                <h2 className="text-3xl font-black italic uppercase tracking-tighter text-white">
+                  {loginMode === 'email-login' ? 'Sign In' : 'Create Profile'}
+                </h2>
+
+                <div className="space-y-4 bg-slate-900/50 p-8 rounded-3xl border border-white/5 text-left">
+                  {loginMode === 'email-signup' && (
+                    <>
+                      <div className="flex flex-col items-center gap-4 mb-6">
+                        <div className="relative group">
+                          <img 
+                            src={emailForm.avatar || "https://placehold.co/150x150/1e293b/FFFFFF?text=?"} 
+                            className="w-24 h-24 rounded-full object-cover border-2 border-indigo-500"
+                          />
+                          <label className="absolute inset-0 flex items-center justify-center bg-black/60 rounded-full opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity">
+                            <Plus className="text-white" />
+                            <input type="file" accept="image/*" className="hidden" onChange={(e) => handleFileChange(e, 'email')} />
+                          </label>
+                        </div>
+                        <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Upload Profile Picture</p>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 ml-2">Display Name</label>
+                        <input 
+                          type="text" 
+                          placeholder="Your Name" 
+                          value={emailForm.name} 
+                          onChange={(e) => setEmailForm({...emailForm, name: e.target.value})}
+                          className="w-full bg-slate-800/50 border border-slate-700 rounded-2xl py-4 px-6 text-base outline-none focus:border-indigo-500 transition-colors" 
+                        />
+                      </div>
+                    </>
+                  )}
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 ml-2">Email Address</label>
+                    <input 
+                      type="email" 
+                      placeholder="email@example.com" 
+                      value={emailForm.email} 
+                      onChange={(e) => setEmailForm({...emailForm, email: e.target.value})}
+                      className="w-full bg-slate-800/50 border border-slate-700 rounded-2xl py-4 px-6 text-base outline-none focus:border-indigo-500 transition-colors" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 ml-2">Password</label>
+                    <input 
+                      type="password" 
+                      placeholder="••••••••" 
+                      value={emailForm.password} 
+                      onChange={(e) => setEmailForm({...emailForm, password: e.target.value})}
+                      className="w-full bg-slate-800/50 border border-slate-700 rounded-2xl py-4 px-6 text-base outline-none focus:border-indigo-500 transition-colors" 
+                    />
+                  </div>
+
+                  {loginMode === 'email-login' && (
+                    <div className="flex items-center justify-between px-2">
+                      <label className="flex items-center gap-2 cursor-pointer group">
+                        <div className="relative">
+                          <input 
+                            type="checkbox" 
+                            checked={emailForm.rememberMe}
+                            onChange={(e) => setEmailForm({...emailForm, rememberMe: e.target.checked})}
+                            className="peer sr-only"
+                          />
+                          <div className="w-5 h-5 border-2 border-slate-700 rounded-md bg-slate-800/50 peer-checked:bg-indigo-600 peer-checked:border-indigo-500 transition-all"></div>
+                          <div className="absolute inset-0 flex items-center justify-center text-white scale-0 peer-checked:scale-100 transition-transform">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest group-hover:text-slate-400 transition-colors">Remember Me</span>
+                      </label>
+                      <button 
+                        onClick={handleForgotPassword}
+                        className="text-[10px] font-black text-indigo-400 uppercase tracking-widest hover:text-indigo-300 transition-colors"
+                      >
+                        Forgot Password?
+                      </button>
+                    </div>
+                  )}
+
+                  {resetSent && (
+                    <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-emerald-400 text-[10px] font-bold uppercase tracking-widest text-center animate-in fade-in slide-in-from-top-2">
+                      Password reset link sent to your email!
+                    </div>
+                  )}
+
+                  <button 
+                    onClick={() => handleEmailAuth(loginMode === 'email-login' ? 'login' : 'signup')}
+                    className="w-full flex items-center justify-center gap-4 bg-indigo-600 hover:bg-indigo-500 text-white px-10 py-5 rounded-[2rem] font-black shadow-xl active:scale-95 border border-white/5 mt-4"
+                  >
+                    {loginMode === 'email-login' ? 'Sign In' : 'Create Profile'}
+                  </button>
+
+                  <p className="text-center text-slate-500 text-xs font-bold mt-4">
+                    {loginMode === 'email-login' ? "Don't have a profile?" : "Already have a profile?"}
+                    <button 
+                      onClick={() => setLoginMode(loginMode === 'email-login' ? 'email-signup' : 'email-login')}
+                      className="text-indigo-400 hover:text-indigo-300 ml-2 underline"
+                    >
+                      {loginMode === 'email-login' ? 'Create one now' : 'Sign in instead'}
+                    </button>
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {loginError && (
+              <div className="mt-8 p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-400 text-xs font-bold uppercase tracking-wider animate-in fade-in slide-in-from-bottom-2">
+                {loginError}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-full w-full bg-[#020617] font-sans overflow-hidden text-slate-50 relative">
+      {/* Floating Notifications */}
+      {shareFeedback && (
+        <div className="absolute top-6 left-1/2 -translate-x-1/2 z-[5000] animate-in slide-in-from-top duration-300">
+          <div className="bg-emerald-500 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 font-black uppercase text-[10px] tracking-widest border border-white/20">
+            <CheckCircle2 size={16}/>
+            {shareFeedback}
+          </div>
+        </div>
+      )}
+
+      {/* Reminder Notifications */}
+      <div className="absolute top-20 right-6 z-[5000] space-y-4 pointer-events-none">
+        {activeNotifications.map(notif => (
+          <div key={notif.id} className="pointer-events-auto bg-indigo-600 text-white p-5 rounded-[2rem] shadow-2xl border border-white/20 w-80 animate-in slide-in-from-right duration-500">
+            <div className="flex justify-between items-start mb-2">
+              <div className="flex items-center gap-2">
+                <Bell size={16} className="animate-bounce"/>
+                <span className="text-[10px] font-black uppercase tracking-widest">Upcoming Event</span>
+              </div>
+              <button onClick={() => dismissNotification(notif.id)} className="p-1 hover:bg-white/10 rounded-full">
+                <X size={14}/>
+              </button>
+            </div>
+            <h4 className="font-black italic uppercase text-lg mb-1">{notif.title}</h4>
+            <p className="text-[10px] font-bold uppercase opacity-80">Starts at {notif.time} on {new Date(notif.date).toLocaleDateString()}</p>
+            <button 
+              onClick={() => {
+                setActiveTab('reminders');
+                dismissNotification(notif.id);
+              }}
+              className="mt-4 w-full py-2 bg-white text-indigo-600 rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-slate-100 transition-all"
+            >
+              View Details
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <div className="w-full md:w-[400px] flex flex-col border-r border-white/5 bg-slate-900/60 backdrop-blur-3xl z-[1000] h-full shadow-2xl overflow-hidden">
+        <div className="p-8 border-b border-white/5">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-3xl font-black italic uppercase text-white tracking-tighter">Scene</h1>
+                {privacy.ghostMode && (
+                  <span className="bg-slate-800 text-indigo-400 p-1 rounded-lg border border-indigo-500/20" title="Ghost Mode Active">
+                    <Ghost size={14}/>
+                  </span>
+                )}
+              </div>
+              <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-[0.3em]">Panhandle Pop-Up Meets</p>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setActiveTab('profile')} className={`p-2 rounded-lg transition-colors ${activeTab === 'profile' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`} title="Edit Profile"><Settings size={18}/></button>
+              <button onClick={() => setActiveTab('privacy')} className={`p-2 rounded-lg transition-colors ${activeTab === 'privacy' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`} title="Privacy Settings"><Shield size={18}/></button>
+              <button onClick={handleLogout} className="p-2 bg-red-500/10 text-red-400 rounded-lg hover:bg-red-500/20" title="Logout"><LogOut size={18}/></button>
+            </div>
+          </div>
+          {currentUser && (
+            <div className="flex items-center gap-3 p-3 bg-slate-800/50 rounded-xl border border-white/5 relative overflow-hidden">
+              {privacy.ghostMode && <div className="absolute inset-0 bg-indigo-500/5 backdrop-blur-[1px] pointer-events-none"></div>}
+              <img src={currentUser.avatar} className={`w-10 h-10 rounded-full object-cover ${privacy.ghostMode ? 'opacity-40 grayscale' : ''}`}/>
+              <div className="flex-1">
+                <h3 className="font-bold text-slate-300 text-sm leading-tight">{currentUser.name}</h3>
+                {currentUser.car && <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-wide mb-1 opacity-90">{currentUser.car}</p>}
+                <select value={currentUser.status} onChange={handleStatusChange} className="bg-transparent text-[10px] text-slate-400 border-none outline-none appearance-none cursor-pointer font-bold uppercase tracking-wider">
+                  {STATUS_OPTIONS.map(s => <option key={s} value={s} className="bg-slate-800">{s}</option>)}
+                </select>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="flex p-2 gap-1 bg-black/40 m-6 rounded-2xl border border-white/5 overflow-x-auto no-scrollbar">
+          {(['members', 'chat', 'discover', 'cruise', 'reminders', 'profile'] as const).map(tab => (
+            <button key={tab} onClick={() => setActiveTab(tab)} className={`flex-shrink-0 px-4 py-3 text-[10px] uppercase font-black rounded-xl transition-all ${activeTab === tab ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500'}`}>{tab}</button>
+          ))}
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 pb-8 custom-scrollbar">
+          {activeTab === 'discover' ? (
+            <div className="space-y-6 animate-in fade-in duration-300">
+              <div className="pt-2">
+                <h3 className="text-xl font-black text-white italic uppercase tracking-tighter mb-4 flex items-center gap-2"><MapPin size={20} className="text-indigo-500"/> Discover Places</h3>
+                <div className="flex gap-2">
+                  <input 
+                    type="text" 
+                    placeholder="Search car meets, gas, food..." 
+                    value={discoverSearchQuery}
+                    onChange={(e) => setDiscoverSearchQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSearchWithMaps()}
+                    className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 text-sm outline-none focus:border-indigo-500"
+                  />
+                  <button onClick={handleSearchWithMaps} disabled={isSearchingMaps} className="p-2 bg-indigo-600 rounded-xl hover:bg-indigo-700 disabled:opacity-50">
+                    {isSearchingMaps ? <Loader2 size={18} className="animate-spin"/> : <Search size={18}/>}
+                  </button>
+                </div>
+              </div>
+
+              {mapsGroundingResults.text && (
+                <div className="bg-slate-800/40 border border-white/5 rounded-2xl p-4 space-y-4">
+                  <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">{mapsGroundingResults.text}</p>
+                  
+                  {mapsGroundingResults.chunks.length > 0 && (
+                    <div className="pt-4 border-t border-white/5">
+                      <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-3">Live Map References</h4>
+                      <div className="grid gap-2">
+                        {mapsGroundingResults.chunks.map((chunk: any, i: number) => (
+                          chunk.maps && (
+                            <a 
+                              key={i} 
+                              href={chunk.maps.uri} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="flex items-center justify-between p-3 bg-slate-900/50 rounded-xl border border-white/5 hover:border-indigo-500/50 transition-all group"
+                            >
+                              <div className="flex items-center gap-2 truncate">
+                                <MapPin size={14} className="text-emerald-500 flex-shrink-0"/>
+                                <span className="text-xs font-bold text-slate-200 truncate">{chunk.maps.title || "View on Google Maps"}</span>
+                              </div>
+                              <ExternalLink size={14} className="text-slate-500 group-hover:text-white flex-shrink-0"/>
+                            </a>
+                          )
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : activeTab === 'members' ? (
+            <div className="space-y-4 animate-in fade-in duration-500">
+               {/* Broadcast Location Button */}
+               <button 
+                  onClick={() => handleShareLocation('group')}
+                  className="w-full flex items-center justify-center gap-3 p-4 bg-indigo-600/10 border border-indigo-500/20 text-indigo-400 rounded-[2rem] font-black uppercase text-[10px] tracking-widest hover:bg-indigo-600/20 transition-all active:scale-[0.98] mb-2 shadow-lg shadow-indigo-500/5"
+               >
+                 <Share2 size={16}/> Broadcast Location
+               </button>
+
+               {/* Member Search Bar */}
+               <div className="relative group mb-6">
+                 <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-slate-500 group-focus-within:text-indigo-400 transition-colors">
+                   <Search size={14} />
+                 </div>
+                 <input 
+                   type="text" 
+                   placeholder="Search members by name..." 
+                   value={memberSearchQuery}
+                   onChange={(e) => setMemberSearchQuery(e.target.value)}
+                   className="w-full bg-slate-800/50 border border-white/5 rounded-2xl py-3 pl-11 pr-4 text-xs outline-none focus:border-indigo-500/50 focus:bg-slate-800 transition-all placeholder:text-slate-600 font-bold"
+                 />
+                 {memberSearchQuery && (
+                   <button 
+                    onClick={() => setMemberSearchQuery('')}
+                    className="absolute inset-y-0 right-4 flex items-center text-slate-500 hover:text-white transition-colors"
+                   >
+                     <X size={14} />
+                   </button>
+                 )}
+               </div>
+
+               <div className="space-y-4">
+                 {members
+                   .filter(m => m.id !== currentUser?.id && m.status !== 'Offline')
+                   .filter(m => m.name.toLowerCase().includes(memberSearchQuery.toLowerCase()))
+                   .map(m => (
+                     <div key={m.id} className="p-4 bg-slate-800/30 rounded-3xl border border-white/5 flex flex-col gap-3 relative overflow-hidden group hover:bg-slate-800/50 transition-all">
+                     <div className="flex gap-4">
+                       <img src={m.avatar} className="w-12 h-12 rounded-2xl object-cover shadow-lg"/>
+                       <div className="flex-1">
+                         <div className="flex justify-between items-start">
+                           <h3 className="font-black text-white italic uppercase text-sm">{m.name}</h3>
+                           <div className="flex gap-1">
+                             <button onClick={() => handleIndividualShare(m)} className="p-2 text-slate-500 hover:text-emerald-400 transition-colors" title="Share your location"><Share2 size={16}/></button>
+                             <button onClick={() => handleStartDM(m)} className="p-2 text-slate-500 hover:text-indigo-400 transition-colors" title="Send message"><MessageSquare size={16}/></button>
+                           </div>
+                         </div>
+                         <span className="text-[9px] text-emerald-400 mt-1 flex items-center gap-1 font-black uppercase tracking-wider"><Navigation size={8}/> {m.status}</span>
+                       </div>
+                     </div>
+                     
+                     {/* Car Details Section */}
+                     {m.car && (
+                       <div className="pt-2 border-t border-white/5 flex items-center gap-3">
+                         <div className="p-1.5 bg-indigo-500/10 rounded-lg">
+                           <Car size={12} className="text-indigo-400"/>
+                         </div>
+                         <div className="flex-1 min-w-0">
+                           <p className="text-[8px] text-slate-600 font-bold uppercase tracking-widest leading-none mb-0.5">Verified Build</p>
+                           <p className="text-[10px] text-indigo-300 font-black uppercase tracking-tight truncate">{m.car}</p>
+                         </div>
+                       </div>
+                     )}
+                   </div>
+                 ))}
+                 {members
+                   .filter(m => m.id !== currentUser?.id && m.status !== 'Offline')
+                   .filter(m => m.name.toLowerCase().includes(memberSearchQuery.toLowerCase()))
+                   .length === 0 && (
+                   <div className="text-center py-10 space-y-2">
+                     <p className="text-slate-600 font-black uppercase text-[10px] tracking-widest">
+                       {memberSearchQuery ? `No members matching "${memberSearchQuery}"` : "No other members live"}
+                     </p>
+                     {memberSearchQuery && (
+                       <button 
+                        onClick={() => setMemberSearchQuery('')}
+                        className="text-indigo-400 text-[10px] font-black uppercase tracking-widest hover:underline"
+                       >
+                         Clear Search
+                       </button>
+                     )}
+                   </div>
+                 )}
+               </div>
+            </div>
+          ) : activeTab === 'reminders' ? (
+            <div className="space-y-6 animate-in fade-in duration-300">
+               <div className="flex justify-between items-center">
+                 <h3 className="text-xl font-black text-white italic uppercase tracking-tighter flex items-center gap-2"><Bell size={20} className="text-indigo-500"/> Reminders</h3>
+                 <button onClick={() => setIsAddingReminder(!isAddingReminder)} className={`p-2 rounded-xl transition-all ${isAddingReminder ? 'bg-red-500/10 text-red-400' : 'bg-indigo-600 text-white shadow-lg'}`}>
+                   {isAddingReminder ? <X size={18}/> : <Plus size={18}/>}
+                 </button>
+               </div>
+
+               {isAddingReminder && (
+                 <div className="bg-slate-800/40 border border-white/5 rounded-3xl p-6 space-y-4 animate-in slide-in-from-top duration-300">
+                   <div>
+                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">Event Name</label>
+                     <input 
+                      type="text" 
+                      value={newReminder.title} 
+                      onChange={e => setNewReminder({...newReminder, title: e.target.value})}
+                      placeholder="e.g. Pensacola Pop-up Meet" 
+                      className="w-full bg-slate-900/50 border border-white/5 rounded-xl px-4 py-2 text-sm outline-none focus:border-indigo-500"
+                     />
+                   </div>
+                   <div className="grid grid-cols-2 gap-4">
+                     <div>
+                       <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">Date</label>
+                       <input 
+                        type="date" 
+                        value={newReminder.date}
+                        onChange={e => setNewReminder({...newReminder, date: e.target.value})}
+                        className="w-full bg-slate-900/50 border border-white/5 rounded-xl px-4 py-2 text-sm outline-none focus:border-indigo-500 color-scheme-dark"
+                       />
+                     </div>
+                     <div>
+                       <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">Time</label>
+                       <input 
+                        type="time" 
+                        value={newReminder.time}
+                        onChange={e => setNewReminder({...newReminder, time: e.target.value})}
+                        className="w-full bg-slate-900/50 border border-white/5 rounded-xl px-4 py-2 text-sm outline-none focus:border-indigo-500 color-scheme-dark"
+                       />
+                     </div>
+                   </div>
+                   <div className="grid grid-cols-2 gap-4">
+                     <div>
+                       <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">Type</label>
+                       <select 
+                        value={newReminder.type}
+                        onChange={e => setNewReminder({...newReminder, type: e.target.value as Reminder['type']})}
+                        className="w-full bg-slate-900/50 border border-white/5 rounded-xl px-4 py-2 text-sm outline-none focus:border-indigo-500"
+                       >
+                         <option value="Meetup">Meetup</option>
+                         <option value="Cruise">Cruise</option>
+                         <option value="Show">Show</option>
+                         <option value="Other">Other</option>
+                       </select>
+                     </div>
+                     <div>
+                       <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">Alert</label>
+                       <select 
+                        value={newReminder.alertBefore}
+                        onChange={e => setNewReminder({...newReminder, alertBefore: e.target.value as Reminder['alertBefore']})}
+                        className="w-full bg-slate-900/50 border border-white/5 rounded-xl px-4 py-2 text-sm outline-none focus:border-indigo-500"
+                       >
+                         <option value="none">None</option>
+                         <option value="1h">1h before</option>
+                         <option value="1d">1d before</option>
+                       </select>
+                     </div>
+                   </div>
+                   <button onClick={handleAddReminder} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black uppercase text-[10px] tracking-widest shadow-xl shadow-indigo-500/20">Schedule Event</button>
+                 </div>
+               )}
+
+               <div className="space-y-4">
+                 {reminders.length === 0 ? (
+                    <div className="text-center py-20 opacity-20 flex flex-col items-center gap-4">
+                      <Calendar size={48}/>
+                      <p className="font-black uppercase text-[10px] tracking-widest">No upcoming events scheduled</p>
+                    </div>
+                 ) : (
+                   reminders.map(rem => (
+                     <div key={rem.id} className="p-5 bg-slate-800/30 border border-white/5 rounded-[2rem] group hover:bg-slate-800/50 transition-all">
+                       <div className="flex justify-between items-start mb-4">
+                         <div>
+                            <span className={`text-[8px] font-black uppercase tracking-[0.2em] px-2 py-0.5 rounded-md mb-2 inline-block ${rem.type === 'Meetup' ? 'bg-indigo-500/20 text-indigo-400' : rem.type === 'Cruise' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-700 text-slate-400'}`}>
+                              {rem.type}
+                            </span>
+                            <h4 className="font-black text-white italic uppercase text-sm">{rem.title}</h4>
+                         </div>
+                         <button onClick={() => handleDeleteReminder(rem.id)} className="p-2 text-slate-600 hover:text-red-400 transition-colors">
+                           <Trash2 size={16}/>
+                         </button>
+                       </div>
+                       <div className="flex gap-4">
+                         <div className="flex items-center gap-2 text-slate-400">
+                           <Calendar size={12}/>
+                           <span className="text-[10px] font-bold uppercase">{new Date(rem.date).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                         </div>
+                         <div className="flex items-center gap-2 text-slate-400">
+                           <Clock size={12}/>
+                           <span className="text-[10px] font-bold uppercase">{rem.time}</span>
+                         </div>
+                       </div>
+                     </div>
+                   ))
+                 )}
+               </div>
+            </div>
+          ) : activeTab === 'cruise' ? (
+            <div className="space-y-6 animate-in fade-in duration-300">
+               <h3 className="text-xl font-black text-white italic uppercase tracking-tighter">Cruise Mode</h3>
+               <div className="grid grid-cols-2 gap-4">
+                 <button onClick={cruise.isActive ? handleEndCruise : handleStartCruise} className={`p-4 rounded-2xl border flex flex-col items-center font-black uppercase text-[10px] gap-2 transition-all active:scale-95 ${cruise.isActive ? 'bg-red-500/10 border-red-500/20 text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.1)]' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.1)]'}`}>
+                   <Navigation size={24}/> {cruise.isActive ? 'End Cruise' : 'Start Cruise'}
+                 </button>
+                 <button disabled={!cruise.isActive} onClick={() => setIsAddingWaypoint(!isAddingWaypoint)} className={`p-4 rounded-2xl border flex flex-col items-center font-black uppercase text-[10px] gap-2 transition-all active:scale-95 ${isAddingWaypoint ? 'bg-indigo-600 border-indigo-500 text-white shadow-indigo-500/20 shadow-lg' : 'bg-slate-800 border-white/5 text-slate-400'}`}>
+                    <MapPin size={24}/> {isAddingWaypoint ? 'Click Map' : 'Add Point'}
+                 </button>
+               </div>
+
+               {/* Cruise Location Sharing */}
+               {cruise.isActive && (
+                 <button 
+                  onClick={() => handleShareLocation('group')}
+                  className="w-full py-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-center justify-center gap-3 text-emerald-400 font-black uppercase text-[10px] tracking-widest hover:bg-emerald-500/20 transition-all"
+                 >
+                   <Share2 size={16}/> Share Cruise Pos to Group
+                 </button>
+               )}
+
+               {cruise.isActive && (
+                 <div className="bg-indigo-500/10 border border-indigo-500/20 p-4 rounded-2xl">
+                    <p className="text-[10px] font-black text-indigo-400 uppercase mb-2">Live Cruise Data</p>
+                    <div className="flex justify-between text-xs font-bold text-slate-300">
+                      <span>Waypoints</span>
+                      <span>{cruise.route.length - 1}</span>
+                    </div>
+                 </div>
+               )}
+            </div>
+          ) : activeTab === 'chat' ? (
+            <div className="flex flex-col h-full space-y-4 animate-in fade-in duration-500 overflow-hidden">
+               <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+                  {conversations.map(c => (
+                    <button 
+                      key={c.id} 
+                      onClick={() => setActiveConversationId(c.id)}
+                      className={`flex-shrink-0 px-4 py-2 rounded-xl border text-[10px] font-black uppercase transition-all ${activeConversationId === c.id ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-800/50 border-white/5 text-slate-500'}`}
+                    >
+                      {c.name}
+                    </button>
+                  ))}
+               </div>
+
+               {activeConversationId ? (
+                 <div className="flex-1 flex flex-col bg-slate-800/20 rounded-3xl border border-white/5 p-4 min-h-0 overflow-hidden">
+                    <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2 custom-scrollbar">
+                      {conversations.find(c => c.id === activeConversationId)?.messages.map(msg => (
+                        <div key={msg.id} className={`flex flex-col ${msg.senderId === currentUser?.id ? 'items-end' : 'items-start'}`}>
+                          <div className={`max-w-[85%] p-3 rounded-2xl text-xs font-medium ${msg.senderId === currentUser?.id ? 'bg-indigo-600 text-white rounded-tr-none' : 'bg-slate-700/50 text-slate-200 rounded-tl-none border border-white/5'}`}>
+                            {msg.text.includes('google.com/maps') ? (
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <MapPin size={12}/>
+                                  <span className="font-black uppercase text-[8px] tracking-widest">Shared Location</span>
+                                </div>
+                                <p className="leading-tight text-[11px] mb-2">{msg.text.split(': ')[0]}:</p>
+                                <a 
+                                  href={msg.text.split(': ')[1]} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className={`block p-2 rounded-xl border text-center font-bold text-[10px] uppercase transition-all ${msg.senderId === currentUser?.id ? 'bg-white/10 border-white/20 text-white' : 'bg-indigo-600 border-indigo-400 text-white shadow-lg shadow-indigo-500/10'}`}
+                                >
+                                  View on Map
+                                </a>
+                              </div>
+                            ) : msg.text}
+                          </div>
+                          <span className="text-[8px] text-slate-500 mt-1 font-bold uppercase tracking-wider">{msg.timestamp}</span>
+                        </div>
+                      ))}
+                      <div ref={messagesEndRef} />
+                    </div>
+                    <div className="flex gap-2 bg-slate-900/50 p-1 rounded-2xl border border-white/5">
+                      <button onClick={() => activeConversationId && handleShareLocation(activeConversationId)} className="p-2 text-slate-500 hover:text-indigo-400 transition-colors" title="Quick share location">
+                        <MapPin size={18}/>
+                      </button>
+                      <input 
+                        type="text" 
+                        value={messageInput} 
+                        onChange={(e) => setMessageInput(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                        placeholder="Send message..."
+                        className="flex-1 bg-transparent border-none rounded-xl px-4 py-2 text-xs outline-none text-white placeholder:text-slate-600"
+                      />
+                      <button onClick={handleSendMessage} className="p-2 bg-indigo-600 rounded-xl hover:bg-indigo-700 transition-colors shadow-lg">
+                        <Send size={16} className="text-white"/>
+                      </button>
+                    </div>
+                 </div>
+               ) : (
+                 <div className="flex-1 flex flex-col items-center justify-center text-slate-700 opacity-50">
+                    <MessageSquare size={40} className="mb-4"/>
+                    <p className="font-black uppercase text-[10px] tracking-[0.2em]">Select a thread</p>
+                 </div>
+               )}
+            </div>
+          ) : activeTab === 'profile' ? (
+            <div className="space-y-8 animate-in fade-in duration-300">
+              <div>
+                <h3 className="text-xl font-black text-white italic uppercase tracking-tighter mb-6 flex items-center gap-2"><Settings size={20} className="text-indigo-500"/> Edit Profile</h3>
+                
+                <div className="space-y-6">
+                  <div className="flex flex-col items-center mb-6">
+                    <div className="relative group cursor-pointer">
+                      <img src={profileForm.avatar} className="w-24 h-24 rounded-3xl object-cover border-4 border-indigo-500 shadow-2xl group-hover:opacity-75 transition-opacity"/>
+                      <label className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity">
+                        <Plus className="text-white" size={32}/>
+                        <input type="file" accept="image/*" className="hidden" onChange={(e) => handleFileChange(e, 'profile')} />
+                      </label>
+                    </div>
+                    <p className="text-[10px] text-slate-500 font-black uppercase mt-4 tracking-widest">Tap to upload photo</p>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">Display Name</label>
+                      <input 
+                        type="text" 
+                        value={profileForm.name} 
+                        onChange={e => setProfileForm({...profileForm, name: e.target.value})}
+                        placeholder="Your Name" 
+                        className="w-full bg-slate-800/50 border border-white/5 rounded-xl px-4 py-3 text-sm outline-none focus:border-indigo-500 transition-all"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">Vehicle Build</label>
+                      <input 
+                        type="text" 
+                        value={profileForm.car} 
+                        onChange={e => setProfileForm({...profileForm, car: e.target.value})}
+                        placeholder="Year Make Model" 
+                        className="w-full bg-slate-800/50 border border-white/5 rounded-xl px-4 py-3 text-sm outline-none focus:border-indigo-500 transition-all"
+                      />
+                    </div>
+
+                    <button 
+                      onClick={handleUpdateProfile}
+                      className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl shadow-indigo-500/20 transition-all active:scale-95 flex items-center justify-center gap-2 mt-4"
+                    >
+                      <Save size={16}/> Save Profile Changes
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : activeTab === 'privacy' ? (
+            <div className="space-y-8 animate-in fade-in duration-300">
+              <div>
+                <h3 className="text-xl font-black text-white italic uppercase tracking-tighter mb-6 flex items-center gap-2"><Shield size={20} className="text-indigo-500"/> Privacy Center</h3>
+                
+                <div className="space-y-6">
+                  {/* Ghost Mode Toggle */}
+                  <div className="p-6 bg-slate-800/30 rounded-3xl border border-white/5 flex flex-col gap-4 group hover:bg-slate-800/50 transition-all shadow-xl">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className={`p-3 rounded-2xl transition-all ${privacy.ghostMode ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'bg-slate-900 text-slate-600'}`}>
+                          <Ghost size={24}/>
+                        </div>
+                        <div>
+                          <h4 className="font-black text-white italic uppercase text-sm">Ghost Mode</h4>
+                          <p className="text-[10px] text-slate-500 font-bold uppercase mt-0.5">Vanish from other maps</p>
+                        </div>
+                      </div>
+                      <button 
+                        onClick={() => setPrivacy(prev => ({ ...prev, ghostMode: !prev.ghostMode }))}
+                        className={`w-14 h-7 rounded-full transition-all relative border border-white/5 ${privacy.ghostMode ? 'bg-indigo-600 shadow-indigo-500/20 shadow-lg' : 'bg-slate-900'}`}
+                      >
+                        <div className={`absolute top-1 w-5 h-5 rounded-full bg-white transition-all shadow-md ${privacy.ghostMode ? 'left-8' : 'left-1'}`} />
+                      </button>
+                    </div>
+                    <div className={`text-[10px] leading-relaxed p-3 rounded-xl border transition-all ${privacy.ghostMode ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-300' : 'bg-slate-950 border-white/5 text-slate-600'}`}>
+                      {privacy.ghostMode 
+                        ? "ACTIVE: You are currently hidden from the live map. You can still see others, but your marker is ghosted." 
+                        : "DISABLED: Your live location is visible to members based on your visibility settings below."}
+                    </div>
+                  </div>
+
+                  {/* Visibility Controls */}
+                  <div className="p-6 bg-slate-800/30 rounded-3xl border border-white/5 space-y-6 shadow-xl">
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 rounded-2xl bg-slate-900 text-indigo-400">
+                        <Users size={24}/>
+                      </div>
+                      <div>
+                        <h4 className="font-black text-white italic uppercase text-sm">Location Reach</h4>
+                        <p className="text-[10px] text-slate-500 font-bold uppercase mt-0.5">Who can track you</p>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      {(['everyone', 'favorites'] as const).map(mode => (
+                        <button 
+                          key={mode}
+                          onClick={() => setPrivacy(prev => ({ ...prev, visibility: mode }))}
+                          className={`w-full py-4 rounded-2xl text-[11px] font-black uppercase transition-all flex items-center justify-between px-6 border ${privacy.visibility === mode ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20' : 'bg-slate-900 border-white/5 text-slate-600 hover:text-slate-400'}`}
+                        >
+                          <span className="flex items-center gap-2">
+                            {mode === 'everyone' ? <Eye size={16}/> : <ShieldCheck size={16}/>}
+                            {mode}
+                          </span>
+                          {privacy.visibility === mode && <div className="w-2 h-2 rounded-full bg-white animate-pulse"></div>}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <p className="text-slate-500 text-center py-20 font-black uppercase tracking-widest text-xs">Accessing {activeTab}...</p>
+          )}
+        </div>
+      </div>
+      
+      <div className="flex-1 relative h-full">
+        {currentUserLocation && (
+          <MapContainer center={mapDisplayCenter} zoom={13} zoomControl={false} style={{ height: '100%', width: '100%' }}>
+            <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" attribution='&copy; CAR SCENE v2' />
+            <MapViewUpdater center={mapDisplayCenter} />
+            <MapEventsHandler onMapClick={handleAddWaypoint} isAddingWaypoint={isAddingWaypoint} />
+            {cruise.isActive && <CruisePolyline route={cruise.route} />}
+            {cruise.isActive && cruise.route.slice(1).map((p, i) => <Marker key={i} position={p} icon={createWaypointIcon(i)}/>)}
+            {members.filter(m => m.status !== 'Offline' && m.id !== currentUser?.id).map(m => (
+              <Marker key={m.id} position={m.location} icon={createMemberMapIcon(m)}>
+                <Popup>
+                  <div className="p-1">
+                    <p className="font-black italic uppercase text-xs mb-1">{m.name}</p>
+                    {m.car && (
+                      <div className="flex items-center gap-1.5 text-indigo-500 bg-indigo-500/5 px-2 py-1 rounded-md border border-indigo-500/10">
+                        <Car size={10} />
+                        <span className="text-[10px] font-bold uppercase tracking-tight">{m.car}</span>
+                      </div>
+                    )}
+                  </div>
+                </Popup>
+              </Marker>
+            ))}
+            {currentUser && currentUser.status !== 'Offline' && <Marker position={currentUserLocation} icon={userMarkerIcon}/>}
+          </MapContainer>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default App;

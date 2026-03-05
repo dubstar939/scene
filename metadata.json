@@ -1,0 +1,7 @@
+{
+  "name": "ProScene",
+  "description": "Brought to you by 939PRO & Panhandle Pop-Up Meets  Real-time car cruise member mapping and location-based gathering spots for the Panhandle Pop-Up Meets community.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
