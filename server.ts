@@ -5,6 +5,8 @@ import { Server as SocketServer } from "socket.io";
 import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
+import fs from "fs";
+import bcrypt from "bcryptjs";
 
 dotenv.config();
 
@@ -21,10 +23,33 @@ async function startServer() {
     }
   });
   const PORT = 3000;
+  const USERS_FILE = path.join(__dirname, "users.json");
 
   // Real-time state (in-memory for demo, use Redis/DB for production)
   const activeMembers = new Map();
   const registeredUsers = new Map(); // email -> user data
+
+  // Load users from file
+  try {
+    if (fs.existsSync(USERS_FILE)) {
+      const data = fs.readFileSync(USERS_FILE, "utf-8");
+      const usersArray = JSON.parse(data);
+      usersArray.forEach(([email, user]: [string, any]) => {
+        registeredUsers.set(email, user);
+      });
+      console.log(`Loaded ${registeredUsers.size} users from ${USERS_FILE}`);
+    }
+  } catch (err) {
+    console.error("Error loading users:", err);
+  }
+
+  const saveUsers = () => {
+    try {
+      fs.writeFileSync(USERS_FILE, JSON.stringify(Array.from(registeredUsers.entries()), null, 2));
+    } catch (err) {
+      console.error("Error saving users:", err);
+    }
+  };
 
   io.on("connection", (socket) => {
     console.log("User connected:", socket.id);
@@ -61,7 +86,7 @@ async function startServer() {
   // API routes
   app.use(express.json({ limit: '5mb' }));
 
-  app.post("/api/auth/email/signup", (req, res) => {
+  app.post("/api/auth/email/signup", async (req, res) => {
     const { email, password, name, avatar } = req.body;
     if (!email || !password || !name) {
       return res.status(400).json({ error: "Missing required fields" });
@@ -69,27 +94,44 @@ async function startServer() {
     if (registeredUsers.has(email)) {
       return res.status(400).json({ error: "User already exists" });
     }
-    const newUser = {
-      id: `email-${Date.now()}`,
-      email,
-      password, // In real app, hash this!
-      name,
-      avatar: avatar || `https://i.pravatar.cc/150?u=${email}`,
-      car: 'New Member'
-    };
-    registeredUsers.set(email, newUser);
-    const { password: _, ...userWithoutPassword } = newUser;
-    res.json({ user: userWithoutPassword });
+    
+    try {
+      const hashedPassword = await bcrypt.hash(password, 10);
+      const newUser = {
+        id: `email-${Date.now()}`,
+        email,
+        password: hashedPassword,
+        name,
+        avatar: avatar || `https://i.pravatar.cc/150?u=${email}`,
+        car: 'New Member'
+      };
+      registeredUsers.set(email, newUser);
+      saveUsers();
+      const { password: _, ...userWithoutPassword } = newUser;
+      res.json({ user: userWithoutPassword });
+    } catch (err) {
+      res.status(500).json({ error: "Error creating user" });
+    }
   });
 
-  app.post("/api/auth/email/login", (req, res) => {
+  app.post("/api/auth/email/login", async (req, res) => {
     const { email, password } = req.body;
     const user = registeredUsers.get(email);
-    if (!user || user.password !== password) {
+    
+    if (!user) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
-    const { password: _, ...userWithoutPassword } = user;
-    res.json({ user: userWithoutPassword });
+
+    try {
+      const isMatch = await bcrypt.compare(password, user.password);
+      if (!isMatch) {
+        return res.status(401).json({ error: "Invalid credentials" });
+      }
+      const { password: _, ...userWithoutPassword } = user;
+      res.json({ user: userWithoutPassword });
+    } catch (err) {
+      res.status(500).json({ error: "Error during login" });
+    }
   });
 
   // Vite middleware for development
