@@ -8,7 +8,7 @@ import {
   ShieldCheck, UserCheck, Eye, EyeOff, Facebook, Bell, Power,
   MessageSquare, Send, CornerUpLeft, WifiOff, Share2, Copy,
   AlertTriangle, UserPlus, LogOut, ArrowLeft, Loader2, Search, ExternalLink, Settings, Lock,
-  Car, CheckCircle2, Calendar, Clock, Plus, Trash2, ChevronRight
+  Car, CheckCircle2, Calendar, Clock, Plus, Trash2, ChevronRight, Star
 } from 'lucide-react';
 import { Member, Spot, PrivacySettings, Conversation, Message, Cruise, Reminder } from './types';
 import { GoogleGenAI } from "@google/genai";
@@ -196,6 +196,20 @@ const App: React.FC = () => {
     ghostMode: false,
     visibility: 'everyone'
   });
+
+  const [favoriteMemberIds, setFavoriteMemberIds] = useState<string[]>(() => {
+    const saved = localStorage.getItem('scene_favorites');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [showOnlyFavorites, setShowOnlyFavorites] = useState(false);
+
+  const toggleFavorite = (id: string) => {
+    setFavoriteMemberIds(prev => {
+      const updated = prev.includes(id) ? prev.filter(fid => fid !== id) : [...prev, id];
+      localStorage.setItem('scene_favorites', JSON.stringify(updated));
+      return updated;
+    });
+  };
 
   // Cruise State
   const [cruise, setCruise] = useState<Cruise>({ isActive: false, leaderId: null, route: [] });
@@ -1068,39 +1082,52 @@ const App: React.FC = () => {
                </button>
 
                {/* Member Search Bar */}
-               <div className="relative group mb-6">
-                 <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-slate-500 group-focus-within:text-indigo-400 transition-colors">
-                   <Search size={14} />
+               <div className="flex gap-2 mb-6">
+                 <div className="relative flex-1 group">
+                   <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-slate-500 group-focus-within:text-indigo-400 transition-colors">
+                     <Search size={14} />
+                   </div>
+                   <input 
+                     type="text" 
+                     placeholder="Search members..." 
+                     value={memberSearchQuery}
+                     onChange={(e) => setMemberSearchQuery(e.target.value)}
+                     className="w-full bg-slate-800/50 border border-white/5 rounded-2xl py-3 pl-11 pr-4 text-xs outline-none focus:border-indigo-500/50 focus:bg-slate-800 transition-all placeholder:text-slate-600 font-bold"
+                   />
+                   {memberSearchQuery && (
+                     <button 
+                      onClick={() => setMemberSearchQuery('')}
+                      className="absolute inset-y-0 right-4 flex items-center text-slate-500 hover:text-white transition-colors"
+                     >
+                       <X size={14} />
+                     </button>
+                   )}
                  </div>
-                 <input 
-                   type="text" 
-                   placeholder="Search members by name..." 
-                   value={memberSearchQuery}
-                   onChange={(e) => setMemberSearchQuery(e.target.value)}
-                   className="w-full bg-slate-800/50 border border-white/5 rounded-2xl py-3 pl-11 pr-4 text-xs outline-none focus:border-indigo-500/50 focus:bg-slate-800 transition-all placeholder:text-slate-600 font-bold"
-                 />
-                 {memberSearchQuery && (
-                   <button 
-                    onClick={() => setMemberSearchQuery('')}
-                    className="absolute inset-y-0 right-4 flex items-center text-slate-500 hover:text-white transition-colors"
-                   >
-                     <X size={14} />
-                   </button>
-                 )}
+                 <button 
+                  onClick={() => setShowOnlyFavorites(!showOnlyFavorites)}
+                  className={`px-4 rounded-2xl border transition-all flex items-center gap-2 font-black uppercase text-[10px] tracking-widest ${showOnlyFavorites ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20' : 'bg-slate-800/50 border-white/5 text-slate-500 hover:text-slate-300'}`}
+                  title={showOnlyFavorites ? "Showing Favorites" : "Filter Favorites"}
+                 >
+                   <Star size={14} fill={showOnlyFavorites ? "currentColor" : "none"} />
+                   <span className="hidden sm:inline">Favs</span>
+                 </button>
                </div>
 
                <div className="space-y-4">
                  {members
                    .filter(m => m.id !== currentUser?.id && m.status !== 'Offline')
+                   .filter(m => !showOnlyFavorites || favoriteMemberIds.includes(m.id))
                    .filter(m => m.name.toLowerCase().includes(memberSearchQuery.toLowerCase()))
                    .map(m => (
                      <div key={m.id} className="p-4 bg-slate-800/30 rounded-3xl border border-white/5 flex flex-col gap-3 relative overflow-hidden group hover:bg-slate-800/50 transition-all">
+                      {favoriteMemberIds.includes(m.id) && <div className="absolute top-0 right-0 w-12 h-12 bg-indigo-600/10 rounded-bl-[2rem] pointer-events-none flex items-center justify-center"><Star size={12} className="text-indigo-400 opacity-30" fill="currentColor"/></div>}
                      <div className="flex gap-4">
                        <img src={m.avatar} className="w-12 h-12 rounded-2xl object-cover shadow-lg"/>
                        <div className="flex-1">
                          <div className="flex justify-between items-start">
                            <h3 className="font-black text-white italic uppercase text-sm">{m.name}</h3>
                            <div className="flex gap-1">
+                             <button onClick={() => toggleFavorite(m.id)} className={`p-2 transition-colors ${favoriteMemberIds.includes(m.id) ? 'text-indigo-400' : 'text-slate-500 hover:text-indigo-400'}`} title={favoriteMemberIds.includes(m.id) ? "Remove from favorites" : "Add to favorites"}><Star size={16} fill={favoriteMemberIds.includes(m.id) ? "currentColor" : "none"}/></button>
                              <button onClick={() => handleIndividualShare(m)} className="p-2 text-slate-500 hover:text-emerald-400 transition-colors" title="Share your location"><Share2 size={16}/></button>
                              <button onClick={() => handleStartDM(m)} className="p-2 text-slate-500 hover:text-indigo-400 transition-colors" title="Send message"><MessageSquare size={16}/></button>
                            </div>
@@ -1125,18 +1152,22 @@ const App: React.FC = () => {
                  ))}
                  {members
                    .filter(m => m.id !== currentUser?.id && m.status !== 'Offline')
+                   .filter(m => !showOnlyFavorites || favoriteMemberIds.includes(m.id))
                    .filter(m => m.name.toLowerCase().includes(memberSearchQuery.toLowerCase()))
                    .length === 0 && (
                    <div className="text-center py-10 space-y-2">
                      <p className="text-slate-600 font-black uppercase text-[10px] tracking-widest">
-                       {memberSearchQuery ? `No members matching "${memberSearchQuery}"` : "No other members live"}
+                       {memberSearchQuery ? `No members matching "${memberSearchQuery}"` : showOnlyFavorites ? "No favorite members online" : "No other members live"}
                      </p>
-                     {memberSearchQuery && (
+                     {(memberSearchQuery || showOnlyFavorites) && (
                        <button 
-                        onClick={() => setMemberSearchQuery('')}
+                        onClick={() => {
+                          setMemberSearchQuery('');
+                          setShowOnlyFavorites(false);
+                        }}
                         className="text-indigo-400 text-[10px] font-black uppercase tracking-widest hover:underline"
                        >
-                         Clear Search
+                         Clear Filters
                        </button>
                      )}
                    </div>
@@ -1476,7 +1507,10 @@ const App: React.FC = () => {
             <MapEventsHandler onMapClick={handleAddWaypoint} isAddingWaypoint={isAddingWaypoint} />
             {cruise.isActive && <CruisePolyline route={cruise.route} />}
             {cruise.isActive && cruise.route.slice(1).map((p, i) => <Marker key={i} position={p} icon={createWaypointIcon(i)}/>)}
-            {members.filter(m => m.status !== 'Offline' && m.id !== currentUser?.id).map(m => (
+            {members
+              .filter(m => m.status !== 'Offline' && m.id !== currentUser?.id)
+              .filter(m => !showOnlyFavorites || favoriteMemberIds.includes(m.id))
+              .map(m => (
               <Marker key={m.id} position={m.location} icon={createMemberMapIcon(m)}>
                 <Popup>
                   <div className="p-1">
