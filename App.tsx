@@ -385,10 +385,20 @@ const App: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(emailForm)
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Authentication failed');
       
-      completeLogin(data.user.id, data.user.name, data.user.avatar, data.user.car);
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Authentication failed');
+        completeLogin(data.user.id, data.user.name, data.user.avatar, data.user.car);
+      } else {
+        const text = await response.text();
+        console.error("Non-JSON response received:", text);
+        if (response.status === 413) {
+          throw new Error("Profile picture is too large. Please use a smaller image.");
+        }
+        throw new Error(`Server error (${response.status}). Please try again later.`);
+      }
     } catch (error: any) {
       setIsLoggingIn(false);
       setLoginError(error.message);

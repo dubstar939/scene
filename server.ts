@@ -84,9 +84,17 @@ async function startServer() {
   });
 
   // API routes
-  app.use(express.json({ limit: '5mb' }));
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+  // Logging middleware for API
+  app.use("/api", (req, res, next) => {
+    console.log(`${req.method} ${req.url}`);
+    next();
+  });
 
   app.post("/api/auth/email/signup", async (req, res) => {
+    console.log("Signup attempt:", req.body.email);
     const { email, password, name, avatar } = req.body;
     if (!email || !password || !name) {
       return res.status(400).json({ error: "Missing required fields" });
@@ -130,8 +138,21 @@ async function startServer() {
       const { password: _, ...userWithoutPassword } = user;
       res.json({ user: userWithoutPassword });
     } catch (err) {
+      console.error("Login error:", err);
       res.status(500).json({ error: "Error during login" });
     }
+  });
+
+  // Global error handler for JSON parsing errors
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (err instanceof SyntaxError && 'status' in err && err.status === 400 && 'body' in err) {
+      return res.status(400).json({ error: "Invalid JSON payload" });
+    }
+    if (err.status === 413) {
+      return res.status(413).json({ error: "Payload too large. Please use a smaller image." });
+    }
+    console.error("Unhandled error:", err);
+    res.status(500).json({ error: "Internal server error" });
   });
 
   // Vite middleware for development
