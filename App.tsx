@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { Member, Spot, PrivacySettings, Conversation, Message, Cruise, Reminder } from './types';
 import { GoogleGenAI } from "@google/genai";
+import { supabase } from './src/lib/supabase';
 
 // Custom Member Map Icon based on status
 const createMemberMapIcon = (member: Member) => {
@@ -384,7 +385,40 @@ const App: React.FC = () => {
   const handleEmailAuth = async (mode: 'login' | 'signup') => {
     setLoginError(null);
     setIsLoggingIn(true);
+    
     try {
+      // Try Supabase first if configured
+      if (supabase) {
+        if (mode === 'signup') {
+          const { data, error } = await supabase.auth.signUp({
+            email: emailForm.email,
+            password: emailForm.password,
+            options: {
+              data: {
+                name: emailForm.name,
+                avatar: emailForm.avatar || `https://i.pravatar.cc/150?u=${emailForm.email}`,
+                car: 'New Member'
+              }
+            }
+          });
+          if (error) throw error;
+          if (data.user) {
+            completeLogin(data.user.id, data.user.user_metadata.name, data.user.user_metadata.avatar, data.user.user_metadata.car);
+          }
+        } else {
+          const { data, error } = await supabase.auth.signInWithPassword({
+            email: emailForm.email,
+            password: emailForm.password,
+          });
+          if (error) throw error;
+          if (data.user) {
+            completeLogin(data.user.id, data.user.user_metadata.name, data.user.user_metadata.avatar, data.user.user_metadata.car);
+          }
+        }
+        return;
+      }
+
+      // Fallback to Express API
       const endpoint = mode === 'login' ? '/api/auth/email/login' : '/api/auth/email/signup';
       const response = await fetch(endpoint, {
         method: 'POST',
