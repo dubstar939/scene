@@ -274,6 +274,12 @@ const App: React.FC = () => {
   }, [cruise.leaderId]);
 
   useEffect(() => {
+    // Check API health
+    fetch('/api/health')
+      .then(res => res.json())
+      .then(data => console.log("API Health Check:", data))
+      .catch(err => console.error("API Health Check Failed:", err));
+
     // Check for remembered user
     const savedUser = localStorage.getItem('scene_remembered_user');
     if (savedUser) {
