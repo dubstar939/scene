@@ -75,8 +75,17 @@ const DEFAULT_CENTER: [number, number] = [30.4213, -87.2169]; // Pensacola, FL
 const MapViewUpdater = ({ center }: { center: [number, number] }) => {
   const map = useMap();
   useEffect(() => {
+    map.invalidateSize();
     map.setView(center, 13);
   }, [center, map]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      map.invalidateSize();
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [map]);
+
   return null;
 };
 
