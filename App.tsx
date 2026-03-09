@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents, Polyline } from 'react-leaflet';
 import L from 'leaflet';
-import { io, Socket } from 'socket.io-client';
+import { RealtimeChannel } from '@supabase/supabase-js';
 import { 
   LogIn, Users, MapPin, Navigation, X, Save, Ghost, Shield, ShieldAlert, 
   ShieldCheck, UserCheck, Eye, EyeOff, Facebook, Bell, Power,
@@ -215,7 +215,7 @@ const App: React.FC = () => {
   // Cruise State
   const [cruise, setCruise] = useState<Cruise>({ isActive: false, leaderId: null, route: [] });
   const locationWatchId = useRef<number | null>(null);
-  const socketRef = useRef<Socket | null>(null);
+  const socketRef = useRef<RealtimeChannel | null>(null);
   const [isAddingWaypoint, setIsAddingWaypoint] = useState(false);
 
   const STATUS_OPTIONS: Member['status'][] = ['Cruising', 'Parked', 'Heading to meet', 'At Meetup', 'On Detour', 'Offline'];
@@ -258,7 +258,11 @@ const App: React.FC = () => {
         
         // Emit to server
         if (socketRef.current) {
-          socketRef.current.emit('update_location', { location: newLocation });
+          socketRef.current.send({
+            type: 'broadcast',
+            event: 'location_update',
+            payload: { memberId, location: newLocation }
+          });
         }
 
         setMembers(prevMembers => prevMembers.map(m =>
@@ -301,71 +305,104 @@ const App: React.FC = () => {
       localStorage.setItem('scene_remembered_user', JSON.stringify({ id, name, avatar, car }));
     }
 
-    // Initialize Socket
-    const socket = io();
-    socketRef.current = socket;
+    // Initialize Supabase Realtime Channel
+    if (supabase) {
+      const channel = supabase.channel('scene_main', {
+        config: {
+          presence: {
+            key: id,
+          },
+        },
+      });
 
-    socket.on('members_update', (updatedMembers: Member[]) => {
-      setMembers(updatedMembers);
-    });
+      socketRef.current = channel;
 
-    socket.on('member_moved', (updatedMember: Member) => {
-      setMembers(prev => prev.map(m => m.id === updatedMember.id ? updatedMember : m));
-    });
+      channel
+        .on('presence', { event: 'sync' }, () => {
+          const newState = channel.presenceState();
+          setMembers(prevMembers => {
+            const onlineMembers: Member[] = [];
+            Object.values(newState).forEach((presences: any) => {
+              presences.forEach((p: any) => {
+                if (p.user) {
+                  const existing = prevMembers.find(m => m.id === p.user.id);
+                  onlineMembers.push({
+                    ...p.user,
+                    location: existing?.location || p.user.location,
+                    status: existing?.status || p.user.status,
+                    lastSeen: existing?.lastSeen || p.user.lastSeen
+                  });
+                }
+              });
+            });
+            return onlineMembers;
+          });
+        })
+        .on('broadcast', { event: 'location_update' }, ({ payload }) => {
+          const { memberId, location } = payload;
+          setMembers(prev => prev.map(m => m.id === memberId ? { ...m, location, lastSeen: new Date().toLocaleTimeString() } : m));
+        })
+        .on('broadcast', { event: 'new_message' }, ({ payload }) => {
+          setConversations(prev => prev.map(c => c.id === 'group' ? { ...c, messages: [...c.messages, payload] } : c));
+        })
+        .on('broadcast', { event: 'status_update' }, ({ payload }) => {
+          const { memberId, status } = payload;
+          setMembers(prev => prev.map(m => m.id === memberId ? { ...m, status, lastSeen: new Date().toLocaleTimeString() } : m));
+        })
+        .subscribe(async (status) => {
+          if (status === 'SUBSCRIBED') {
+            navigator.geolocation.getCurrentPosition(
+              async (pos) => {
+                const initialLocation: [number, number] = [pos.coords.latitude, pos.coords.longitude];
+                setCurrentUserLocation(initialLocation);
+                setMapDisplayCenter(initialLocation);
 
-    socket.on('new_message', (msg: Message) => {
-      setConversations(prev => prev.map(c => c.id === 'group' ? { ...c, messages: [...c.messages, msg] } : c));
-    });
-
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const initialLocation: [number, number] = [pos.coords.latitude, pos.coords.longitude];
-        setCurrentUserLocation(initialLocation);
-        setMapDisplayCenter(initialLocation);
-
-        const newCurrentUser: Member = {
-          id,
-          name,
-          car,
-          location: initialLocation,
-          status: 'Cruising',
-          avatar,
-          lastSeen: new Date().toLocaleTimeString(),
-          isFavorite: false,
-        };
-        setCurrentUser(newCurrentUser);
-        setProfileForm({
-          name: newCurrentUser.name,
-          car: newCurrentUser.car || '',
-          avatar: newCurrentUser.avatar
+                const newCurrentUser: Member = {
+                  id,
+                  name,
+                  car,
+                  location: initialLocation,
+                  status: 'Cruising',
+                  avatar,
+                  lastSeen: new Date().toLocaleTimeString(),
+                  isFavorite: false,
+                };
+                setCurrentUser(newCurrentUser);
+                setProfileForm({
+                  name: newCurrentUser.name,
+                  car: newCurrentUser.car || '',
+                  avatar: newCurrentUser.avatar
+                });
+                
+                await channel.track({ user: newCurrentUser });
+                startLocationWatch(newCurrentUser.id);
+              },
+              async () => {
+                const newCurrentUser: Member = {
+                  id,
+                  name,
+                  car,
+                  location: DEFAULT_CENTER,
+                  status: 'Cruising',
+                  avatar,
+                  lastSeen: new Date().toLocaleTimeString(),
+                  isFavorite: false,
+                };
+                setCurrentUser(newCurrentUser);
+                setProfileForm({
+                  name: newCurrentUser.name,
+                  car: newCurrentUser.car || '',
+                  avatar: newCurrentUser.avatar
+                });
+                setCurrentUserLocation(DEFAULT_CENTER);
+                setMapDisplayCenter(DEFAULT_CENTER);
+                
+                await channel.track({ user: newCurrentUser });
+              }
+            );
+          }
         });
-        
-        socket.emit('join_scene', newCurrentUser);
-        startLocationWatch(newCurrentUser.id);
-      },
-      () => {
-        const newCurrentUser: Member = {
-          id,
-          name,
-          car,
-          location: DEFAULT_CENTER,
-          status: 'Cruising',
-          avatar,
-          lastSeen: new Date().toLocaleTimeString(),
-          isFavorite: false,
-        };
-        setCurrentUser(newCurrentUser);
-        setProfileForm({
-          name: newCurrentUser.name,
-          car: newCurrentUser.car || '',
-          avatar: newCurrentUser.avatar
-        });
-        setCurrentUserLocation(DEFAULT_CENTER);
-        setMapDisplayCenter(DEFAULT_CENTER);
-        
-        socket.emit('join_scene', newCurrentUser);
-      }
-    );
+    }
   };
 
   const handleGuestLogin = () => {
@@ -480,7 +517,7 @@ const App: React.FC = () => {
       locationWatchId.current = null;
     }
     if (socketRef.current) {
-      socketRef.current.disconnect();
+      socketRef.current.unsubscribe();
       socketRef.current = null;
     }
     setIsLoggedIn(false);
@@ -586,7 +623,11 @@ const App: React.FC = () => {
     };
     
     if (activeConversationId === 'group' && socketRef.current) {
-      socketRef.current.emit('send_message', newMessage);
+      socketRef.current.send({
+        type: 'broadcast',
+        event: 'new_message',
+        payload: newMessage
+      });
     } else {
       setConversations(conversations.map(c => c.id === activeConversationId ? { ...c, messages: [...c.messages, newMessage] } : c));
     }
@@ -632,6 +673,9 @@ const App: React.FC = () => {
     };
     setCurrentUser(updatedUser);
     setMembers(prev => prev.map(m => m.id === currentUser.id ? updatedUser : m));
+    if (socketRef.current) {
+      socketRef.current.track({ user: updatedUser });
+    }
     setShareFeedback("Profile Updated Successfully");
     setTimeout(() => setShareFeedback(null), 3000);
     setActiveTab('members');
@@ -643,6 +687,16 @@ const App: React.FC = () => {
     const updatedUser = { ...currentUser, status: newStatus };
     setCurrentUser(updatedUser);
     setMembers(members.map(m => m.id === currentUser.id ? updatedUser : m));
+    
+    if (socketRef.current) {
+      socketRef.current.track({ user: updatedUser });
+      socketRef.current.send({
+        type: 'broadcast',
+        event: 'status_update',
+        payload: { memberId: currentUser.id, status: newStatus }
+      });
+    }
+
     if (newStatus === 'Offline') {
       if (locationWatchId.current !== null) {
         navigator.geolocation.clearWatch(locationWatchId.current);
@@ -1446,34 +1500,32 @@ const App: React.FC = () => {
       </div>
       
       <div className="flex-1 relative h-full">
-        {currentUserLocation && (
-          <MapContainer center={mapDisplayCenter} zoom={13} zoomControl={false} style={{ height: '100%', width: '100%' }}>
-            <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" attribution='&copy; CAR SCENE v2' />
-            <MapViewUpdater center={mapDisplayCenter} />
-            <MapEventsHandler onMapClick={handleAddWaypoint} isAddingWaypoint={isAddingWaypoint} />
-            {cruise.isActive && <CruisePolyline route={cruise.route} />}
-            {cruise.isActive && cruise.route.slice(1).map((p, i) => <Marker key={i} position={p} icon={createWaypointIcon(i)}/>)}
-            {members
-              .filter(m => m.status !== 'Offline' && m.id !== currentUser?.id)
-              .filter(m => !showOnlyFavorites || favoriteMemberIds.includes(m.id))
-              .map(m => (
-              <Marker key={m.id} position={m.location} icon={createMemberMapIcon(m)}>
-                <Popup>
-                  <div className="p-1">
-                    <p className="font-black italic uppercase text-xs mb-1">{m.name}</p>
-                    {m.car && (
-                      <div className="flex items-center gap-1.5 text-indigo-500 bg-indigo-500/5 px-2 py-1 rounded-md border border-indigo-500/10">
-                        <Car size={10} />
-                        <span className="text-[10px] font-bold uppercase tracking-tight">{m.car}</span>
-                      </div>
-                    )}
-                  </div>
-                </Popup>
-              </Marker>
-            ))}
-            {currentUser && currentUser.status !== 'Offline' && <Marker position={currentUserLocation} icon={userMarkerIcon}/>}
-          </MapContainer>
-        )}
+        <MapContainer center={mapDisplayCenter} zoom={13} zoomControl={false} style={{ height: '100%', width: '100%' }}>
+          <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" attribution='&copy; CAR SCENE v2' />
+          <MapViewUpdater center={mapDisplayCenter} />
+          <MapEventsHandler onMapClick={handleAddWaypoint} isAddingWaypoint={isAddingWaypoint} />
+          {cruise.isActive && <CruisePolyline route={cruise.route} />}
+          {cruise.isActive && cruise.route.slice(1).map((p, i) => <Marker key={i} position={p} icon={createWaypointIcon(i)}/>)}
+          {members
+            .filter(m => m.status !== 'Offline' && m.id !== currentUser?.id)
+            .filter(m => !showOnlyFavorites || favoriteMemberIds.includes(m.id))
+            .map(m => (
+            <Marker key={m.id} position={m.location} icon={createMemberMapIcon(m)}>
+              <Popup>
+                <div className="p-1">
+                  <p className="font-black italic uppercase text-xs mb-1">{m.name}</p>
+                  {m.car && (
+                    <div className="flex items-center gap-1.5 text-indigo-500 bg-indigo-500/5 px-2 py-1 rounded-md border border-indigo-500/10">
+                      <Car size={10} />
+                      <span className="text-[10px] font-bold uppercase tracking-tight">{m.car}</span>
+                    </div>
+                  )}
+                </div>
+              </Popup>
+            </Marker>
+          ))}
+          {currentUser && currentUser.status !== 'Offline' && currentUserLocation && <Marker position={currentUserLocation} icon={userMarkerIcon}/>}
+        </MapContainer>
       </div>
     </div>
   );

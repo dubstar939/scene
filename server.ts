@@ -1,7 +1,5 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
-import { createServer as createHttpServer } from "http";
-import { Server as SocketServer } from "socket.io";
 import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
@@ -28,20 +26,11 @@ if (supabase) {
 
 async function startServer() {
   const app = express();
-  const httpServer = createHttpServer(app);
-  const io = new SocketServer(httpServer, {
-    cors: {
-      origin: "*",
-      methods: ["GET", "POST"]
-    }
-  });
   const PORT = 3000;
   const USERS_FILE = path.join(__dirname, "users.json");
 
   console.log(`Starting server in ${process.env.NODE_ENV || 'development'} mode`);
 
-  // Real-time state (in-memory for demo, use Redis/DB for production)
-  const activeMembers = new Map();
   const registeredUsers = new Map(); // email -> user data (used as cache if supabase exists)
 
   // Load users from file (Initial load or fallback)
@@ -192,38 +181,6 @@ async function startServer() {
 
   app.use("/api", apiRouter);
 
-  io.on("connection", (socket) => {
-    console.log("User connected:", socket.id);
-
-    socket.on("join_scene", (member) => {
-      activeMembers.set(socket.id, member);
-      io.emit("members_update", Array.from(activeMembers.values()));
-    });
-
-    socket.on("update_location", (data) => {
-      const member = activeMembers.get(socket.id);
-      if (member) {
-        const updatedMember = { 
-          ...member, 
-          location: data.location, 
-          lastSeen: new Date().toLocaleTimeString() 
-        };
-        activeMembers.set(socket.id, updatedMember);
-        socket.broadcast.emit("member_moved", updatedMember);
-      }
-    });
-
-    socket.on("send_message", (message) => {
-      io.emit("new_message", message);
-    });
-
-    socket.on("disconnect", () => {
-      activeMembers.delete(socket.id);
-      io.emit("members_update", Array.from(activeMembers.values()));
-      console.log("User disconnected:", socket.id);
-    });
-  });
-
   // Global error handler for JSON parsing errors
   app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (err instanceof SyntaxError && 'status' in err && err.status === 400 && 'body' in err) {
@@ -250,7 +207,7 @@ async function startServer() {
     });
   }
 
-  httpServer.listen(PORT, "0.0.0.0", () => {
+  app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
 }
