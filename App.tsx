@@ -7,7 +7,7 @@ import {
   LogIn, Users, MapPin, Navigation, X, Save, Ghost, Shield, ShieldAlert, 
   ShieldCheck, UserCheck, Eye, EyeOff, Facebook, Bell, Power,
   MessageSquare, Send, CornerUpLeft, WifiOff, Share2, Copy,
-  AlertTriangle, UserPlus, LogOut, ArrowLeft, Loader2, Search, ExternalLink, Settings, Lock,
+  AlertTriangle, AlertCircle, UserPlus, LogOut, ArrowLeft, Loader2, Search, ExternalLink, Settings, Lock,
   Car, CheckCircle2, Calendar, Clock, Plus, Trash2, ChevronRight, Star
 } from 'lucide-react';
 import { Member, Spot, PrivacySettings, Conversation, Message, Cruise, Reminder } from './types';
@@ -71,6 +71,7 @@ const createWaypointIcon = (index: number) => L.divIcon({
 });
 
 const DEFAULT_CENTER: [number, number] = [30.4213, -87.2169]; // Pensacola, FL
+const DEFAULT_AVATAR = "https://placehold.co/150x150/1e293b/FFFFFF?text=?";
 
 const MapViewUpdater = ({ center }: { center: [number, number] }) => {
   const map = useMap();
@@ -129,6 +130,7 @@ const App: React.FC = () => {
   const [members, setMembers] = useState<Member[]>([]);
   const [activeTab, setActiveTab] = useState<'members' | 'chat' | 'discover' | 'privacy' | 'cruise' | 'reminders' | 'profile'>('members');
   const [shareFeedback, setShareFeedback] = useState<string | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
   
   // Profile Edit State
   const [profileForm, setProfileForm] = useState({
@@ -260,10 +262,17 @@ const App: React.FC = () => {
     if (locationWatchId.current !== null) {
       navigator.geolocation.clearWatch(locationWatchId.current);
     }
+
+    if (!navigator.geolocation) {
+      setLocationError("Geolocation is not supported by your browser");
+      return;
+    }
+
     locationWatchId.current = navigator.geolocation.watchPosition(
       (watchPos) => {
         const newLocation: [number, number] = [watchPos.coords.latitude, watchPos.coords.longitude];
         setCurrentUserLocation(newLocation);
+        setLocationError(null);
         
         // Emit to server
         if (socketRef.current) {
@@ -282,10 +291,40 @@ const App: React.FC = () => {
           setMapDisplayCenter(newLocation);
         }
       },
-      (err) => console.error("Error watching position:", err),
-      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+      (err) => {
+        console.error("Error watching position:", err);
+        let message = "An unknown error occurred while retrieving your location.";
+        switch (err.code) {
+          case err.PERMISSION_DENIED:
+            message = "Location access denied. Please enable permissions to use live tracking.";
+            break;
+          case err.POSITION_UNAVAILABLE:
+            message = "Location information is unavailable.";
+            break;
+          case err.TIMEOUT:
+            message = "Location request timed out.";
+            break;
+        }
+        setLocationError(message);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
   }, [cruise.leaderId]);
+
+  useEffect(() => {
+    if (locationError) {
+      const timer = setTimeout(() => setLocationError(null), 8000);
+      return () => clearTimeout(timer);
+    }
+  }, [locationError]);
+
+  useEffect(() => {
+    return () => {
+      if (locationWatchId.current !== null) {
+        navigator.geolocation.clearWatch(locationWatchId.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     // Check API health
@@ -746,7 +785,7 @@ const App: React.FC = () => {
     const ringPulse = isGhost ? '' : 'animate-pulse';
     const iconHtml = `
       <div class="relative w-10 h-10 rounded-full ${bgColor} border-4 border-white shadow-2xl flex items-center justify-center transition-all duration-700 ${opacity} ${ringPulse}">
-        <img src="${currentUser.avatar}" class="w-full h-full rounded-full object-cover p-0.5"/>
+        <img src="${currentUser.avatar || DEFAULT_AVATAR}" class="w-full h-full rounded-full object-cover p-0.5"/>
         ${isGhost ? `<div class="absolute -top-1 -right-1 bg-slate-900 rounded-full p-0.5 border border-white/20"><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 10h.01"/><path d="M15 10h.01"/><path d="M12 2a8 8 0 0 0-8 8v12l3-3 2.5 2.5L12 19l2.5 2.5L17 19l3 3V10a8 8 0 0 0-8-8z"/></svg></div>` : ''}
       </div>`;
     return L.divIcon({ html: iconHtml, className: '', iconSize: [40, 40], iconAnchor: [20, 20] });
@@ -799,7 +838,7 @@ const App: React.FC = () => {
                   <div className="flex flex-col items-center gap-4 mb-2">
                     <div className="relative group">
                       <img 
-                        src={guestAvatar || "https://placehold.co/150x150/1e293b/FFFFFF?text=?"} 
+                        src={guestAvatar || DEFAULT_AVATAR} 
                         className="w-20 h-20 rounded-full object-cover border-2 border-indigo-500/50"
                       />
                       <label className="absolute inset-0 flex items-center justify-center bg-black/60 rounded-full opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity">
@@ -842,7 +881,7 @@ const App: React.FC = () => {
                       <div className="flex flex-col items-center gap-4 mb-6">
                         <div className="relative group">
                           <img 
-                            src={emailForm.avatar || "https://placehold.co/150x150/1e293b/FFFFFF?text=?"} 
+                            src={emailForm.avatar || DEFAULT_AVATAR} 
                             className="w-24 h-24 rounded-full object-cover border-2 border-indigo-500"
                           />
                           <label className="absolute inset-0 flex items-center justify-center bg-black/60 rounded-full opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity">
@@ -960,6 +999,29 @@ const App: React.FC = () => {
         </div>
       )}
 
+      {locationError && (
+        <div className="absolute top-6 left-1/2 -translate-x-1/2 z-[5000] animate-in slide-in-from-top duration-300">
+          <div className="bg-red-500 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 font-black uppercase text-[10px] tracking-widest border border-white/20">
+            <AlertCircle size={16}/>
+            <span className="max-w-xs">{locationError}</span>
+            <div className="flex items-center gap-2 ml-2">
+              <button 
+                onClick={() => {
+                  setLocationError(null);
+                  if (currentUser) startLocationWatch(currentUser.id);
+                }} 
+                className="px-3 py-1 bg-white/20 hover:bg-white/30 rounded-lg transition-colors text-[8px] font-black uppercase"
+              >
+                Retry
+              </button>
+              <button onClick={() => setLocationError(null)} className="p-1 hover:bg-white/10 rounded-full transition-colors">
+                <X size={14}/>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Reminder Notifications */}
       <div className="absolute top-20 right-6 z-[5000] space-y-4 pointer-events-none">
         {activeNotifications.map(notif => (
@@ -1011,7 +1073,7 @@ const App: React.FC = () => {
           {currentUser && (
             <div className="flex items-center gap-3 p-3 bg-slate-800/50 rounded-xl border border-white/5 relative overflow-hidden">
               {privacy.ghostMode && <div className="absolute inset-0 bg-indigo-500/5 backdrop-blur-[1px] pointer-events-none"></div>}
-              <img src={currentUser.avatar} className={`w-10 h-10 rounded-full object-cover ${privacy.ghostMode ? 'opacity-40 grayscale' : ''}`}/>
+              <img src={currentUser.avatar || DEFAULT_AVATAR} className={`w-10 h-10 rounded-full object-cover ${privacy.ghostMode ? 'opacity-40 grayscale' : ''}`}/>
               <div className="flex-1">
                 <h3 className="font-bold text-slate-300 text-sm leading-tight">{currentUser.name}</h3>
                 {currentUser.car && <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-wide mb-1 opacity-90">{currentUser.car}</p>}
@@ -1131,7 +1193,7 @@ const App: React.FC = () => {
                      <div key={m.id} className="p-4 bg-slate-800/30 rounded-3xl border border-white/5 flex flex-col gap-3 relative overflow-hidden group hover:bg-slate-800/50 transition-all">
                       {favoriteMemberIds.includes(m.id) && <div className="absolute top-0 right-0 w-12 h-12 bg-indigo-600/10 rounded-bl-[2rem] pointer-events-none flex items-center justify-center"><Star size={12} className="text-indigo-400 opacity-30" fill="currentColor"/></div>}
                      <div className="flex gap-4">
-                       <img src={m.avatar} className="w-12 h-12 rounded-2xl object-cover shadow-lg"/>
+                       <img src={m.avatar || DEFAULT_AVATAR} className="w-12 h-12 rounded-2xl object-cover shadow-lg"/>
                        <div className="flex-1">
                          <div className="flex justify-between items-start">
                            <h3 className="font-black text-white italic uppercase text-sm">{m.name}</h3>
@@ -1397,7 +1459,7 @@ const App: React.FC = () => {
                 <div className="space-y-6">
                   <div className="flex flex-col items-center mb-6">
                     <div className="relative group cursor-pointer">
-                      <img src={profileForm.avatar} className="w-24 h-24 rounded-3xl object-cover border-4 border-indigo-500 shadow-2xl group-hover:opacity-75 transition-opacity"/>
+                      <img src={profileForm.avatar || DEFAULT_AVATAR} className="w-24 h-24 rounded-3xl object-cover border-4 border-indigo-500 shadow-2xl group-hover:opacity-75 transition-opacity"/>
                       <label className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity">
                         <Plus className="text-white" size={32}/>
                         <input type="file" accept="image/*" className="hidden" onChange={(e) => handleFileChange(e, 'profile')} />
@@ -1509,6 +1571,26 @@ const App: React.FC = () => {
       </div>
       
       <div className="flex-1 relative h-full">
+        <style>{`
+          .member-popup .leaflet-popup-content-wrapper {
+            background: transparent !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+          }
+          .member-popup .leaflet-popup-content {
+            margin: 0 !important;
+            width: auto !important;
+          }
+          .member-popup .leaflet-popup-tip-container {
+            display: none !important;
+          }
+          .member-popup .leaflet-popup-close-button {
+            color: white !important;
+            top: 8px !important;
+            right: 8px !important;
+            z-index: 10 !important;
+          }
+        `}</style>
         <MapContainer center={mapDisplayCenter} zoom={13} zoomControl={false} style={{ height: '100%', width: '100%' }}>
           <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" attribution='&copy; CAR SCENE v2' />
           <MapViewUpdater center={mapDisplayCenter} />
@@ -1520,15 +1602,42 @@ const App: React.FC = () => {
             .filter(m => !showOnlyFavorites || favoriteMemberIds.includes(m.id))
             .map(m => (
             <Marker key={m.id} position={m.location} icon={createMemberMapIcon(m)}>
-              <Popup>
-                <div className="p-1">
-                  <p className="font-black italic uppercase text-xs mb-1">{m.name}</p>
-                  {m.car && (
-                    <div className="flex items-center gap-1.5 text-indigo-500 bg-indigo-500/5 px-2 py-1 rounded-md border border-indigo-500/10">
-                      <Car size={10} />
-                      <span className="text-[10px] font-bold uppercase tracking-tight">{m.car}</span>
+              <Popup className="member-popup">
+                <div className="min-w-[180px] p-0 bg-slate-900 text-white rounded-2xl overflow-hidden border border-white/10 shadow-2xl">
+                  {/* Header with Avatar and Name */}
+                  <div className="flex items-center gap-3 p-3 bg-slate-800/50 border-b border-white/5">
+                    <div className="relative">
+                      <img src={m.avatar || DEFAULT_AVATAR} className="w-10 h-10 rounded-xl object-cover border border-white/10 shadow-lg" />
+                      <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-emerald-500 border-2 border-slate-900 rounded-full shadow-sm"></div>
                     </div>
-                  )}
+                    <div className="flex-1 min-w-0">
+                      <p className="font-black italic uppercase text-xs truncate leading-tight text-white">{m.name}</p>
+                      <span className="text-[8px] text-emerald-400 flex items-center gap-1 font-black uppercase tracking-wider mt-0.5">
+                        <Navigation size={8} className="animate-pulse"/> {m.status}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  {/* Details and Actions */}
+                  <div className="p-3 space-y-2.5">
+                    {m.car && (
+                      <div className="flex items-center gap-2 text-indigo-300 bg-indigo-500/10 px-2.5 py-2 rounded-xl border border-indigo-500/20">
+                        <Car size={12} className="text-indigo-400 shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[7px] text-slate-500 font-bold uppercase tracking-widest leading-none mb-0.5">Verified Build</p>
+                          <p className="text-[9px] font-black uppercase tracking-tight truncate leading-none">{m.car}</p>
+                        </div>
+                      </div>
+                    )}
+                    
+                    <button 
+                      onClick={() => handleStartDM(m)}
+                      className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white py-2.5 rounded-xl transition-all text-[9px] font-black uppercase tracking-widest shadow-lg shadow-indigo-600/20 active:scale-95"
+                    >
+                      <MessageSquare size={12} />
+                      Send Message
+                    </button>
+                  </div>
                 </div>
               </Popup>
             </Marker>
