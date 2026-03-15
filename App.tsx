@@ -8,7 +8,8 @@ import {
   ShieldCheck, UserCheck, Eye, EyeOff, Facebook, Bell, Power,
   MessageSquare, Send, CornerUpLeft, WifiOff, Share2, Copy,
   AlertTriangle, AlertCircle, UserPlus, LogOut, ArrowLeft, Loader2, Search, ExternalLink, Settings, Lock,
-  Car, CheckCircle2, Calendar, Clock, Plus, Trash2, ChevronRight, Star
+  Car, CheckCircle2, Calendar, Clock, Plus, Trash2, ChevronRight, Star,
+  Fuel, Utensils, Camera
 } from 'lucide-react';
 import { Member, Spot, PrivacySettings, Conversation, Message, Cruise, Reminder } from './types';
 import { GoogleGenAI } from "@google/genai";
@@ -63,6 +64,37 @@ const createMemberMapIcon = (member: Member) => {
   });
 };
 
+const createSpotMapIcon = (type: Spot['type']) => {
+  let bgColor = 'bg-indigo-600';
+  let icon = '';
+
+  switch (type) {
+    case 'Meetup':
+      bgColor = 'bg-purple-600';
+      icon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 18a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2"/><rect x="9" y="9" width="6" height="4" rx="1"/><path d="M12 2L4 5l8 3 8-3-8-3z"/></svg>`;
+      break;
+    case 'Fuel':
+      bgColor = 'bg-orange-500';
+      icon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="22" x2="21" y2="22"/><path d="M6 12V4c0-1.1.9-2 2-2h6c1.1 0 2 .9 2 2v16"/><path d="M14 9h2.4c1.1 0 2 .9 2 2v11"/><circle cx="10" cy="9" r="2"/></svg>`;
+      break;
+    case 'Food':
+      bgColor = 'bg-red-500';
+      icon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>`;
+      break;
+    case 'Scenic':
+      bgColor = 'bg-emerald-500';
+      icon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`;
+      break;
+  }
+
+  return L.divIcon({
+    html: `<div class="w-10 h-10 rounded-2xl ${bgColor} border-2 border-white shadow-xl flex items-center justify-center transform transition-transform hover:scale-110">${icon}</div>`,
+    className: '',
+    iconSize: [40, 40],
+    iconAnchor: [20, 20],
+  });
+};
+
 const createWaypointIcon = (index: number) => L.divIcon({
   html: `<div class="w-8 h-8 rounded-full bg-indigo-600 border-2 border-white shadow-lg flex items-center justify-center font-bold text-white text-sm">${index + 1}</div>`,
   className: '',
@@ -90,10 +122,10 @@ const MapViewUpdater = ({ center }: { center: [number, number] }) => {
   return null;
 };
 
-const MapEventsHandler = ({ onMapClick, isAddingWaypoint }: { onMapClick: (latlng: L.LatLng) => void, isAddingWaypoint: boolean }) => {
+const MapEventsHandler = ({ onMapClick, isAddingWaypoint, isAddingSpot }: { onMapClick: (latlng: L.LatLng) => void, isAddingWaypoint: boolean, isAddingSpot: boolean }) => {
   useMapEvents({
     click(e) {
-      if (isAddingWaypoint) {
+      if (isAddingWaypoint || isAddingSpot) {
         onMapClick(e.latlng);
       }
     }
@@ -128,9 +160,21 @@ const App: React.FC = () => {
   const [currentUserLocation, setCurrentUserLocation] = useState<[number, number] | null>(null);
   const [mapDisplayCenter, setMapDisplayCenter] = useState<[number, number]>(DEFAULT_CENTER);
   const [members, setMembers] = useState<Member[]>([]);
-  const [activeTab, setActiveTab] = useState<'members' | 'chat' | 'discover' | 'privacy' | 'cruise' | 'reminders' | 'profile'>('members');
+  const [activeTab, setActiveTab] = useState<'members' | 'chat' | 'discover' | 'privacy' | 'cruise' | 'reminders' | 'profile' | 'spots'>('members');
   const [shareFeedback, setShareFeedback] = useState<string | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
+  
+  // Spots State
+  const [spots, setSpots] = useState<Spot[]>(() => {
+    const saved = localStorage.getItem('scene_spots');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [isAddingSpot, setIsAddingSpot] = useState(false);
+  const [newSpotForm, setNewSpotForm] = useState<Partial<Spot>>({
+    name: '',
+    type: 'Meetup',
+    description: ''
+  });
   
   // Profile Edit State
   const [profileForm, setProfileForm] = useState({
@@ -397,6 +441,21 @@ const App: React.FC = () => {
           const { memberId, status } = payload;
           setMembers(prev => prev.map(m => m.id === memberId ? { ...m, status, lastSeen: new Date().toLocaleTimeString() } : m));
         })
+        .on('broadcast', { event: 'new_spot' }, ({ payload }) => {
+          setSpots(prev => {
+            if (prev.some(s => s.id === payload.id)) return prev;
+            const updated = [...prev, payload];
+            localStorage.setItem('scene_spots', JSON.stringify(updated));
+            return updated;
+          });
+        })
+        .on('broadcast', { event: 'delete_spot' }, ({ payload }) => {
+          setSpots(prev => {
+            const updated = prev.filter(s => s.id !== payload.id);
+            localStorage.setItem('scene_spots', JSON.stringify(updated));
+            return updated;
+          });
+        })
         .subscribe(async (status) => {
           if (status === 'SUBSCRIBED') {
             navigator.geolocation.getCurrentPosition(
@@ -628,14 +687,62 @@ const App: React.FC = () => {
     }
   };
 
-  const handleAddWaypoint = (latlng: L.LatLng) => {
+  const handleMapClick = (latlng: L.LatLng) => {
     if (!currentUser) return;
-    if (cruise.isActive && cruise.leaderId === currentUser.id) {
+    
+    if (isAddingWaypoint && cruise.isActive && cruise.leaderId === currentUser.id) {
       setCruise(prev => ({
         ...prev,
         route: [...prev.route, [latlng.lat, latlng.lng]]
       }));
       setIsAddingWaypoint(false);
+    } else if (isAddingSpot) {
+      setNewSpotForm(prev => ({ ...prev, location: [latlng.lat, latlng.lng] }));
+    }
+  };
+
+  const handleSaveSpot = () => {
+    if (!newSpotForm.name || !newSpotForm.location || !currentUser) return;
+    
+    const spot: Spot = {
+      id: `spot-${Date.now()}`,
+      name: newSpotForm.name,
+      type: newSpotForm.type as Spot['type'],
+      location: newSpotForm.location as [number, number],
+      description: newSpotForm.description,
+      createdBy: currentUser.id,
+      createdAt: new Date().toISOString()
+    };
+    
+    const updatedSpots = [...spots, spot];
+    setSpots(updatedSpots);
+    localStorage.setItem('scene_spots', JSON.stringify(updatedSpots));
+    
+    if (socketRef.current) {
+      socketRef.current.send({
+        type: 'broadcast',
+        event: 'new_spot',
+        payload: spot
+      });
+    }
+    
+    setIsAddingSpot(false);
+    setNewSpotForm({ name: '', type: 'Meetup', description: '' });
+    setShareFeedback("Spot added to the community map!");
+    setTimeout(() => setShareFeedback(null), 3000);
+  };
+
+  const handleDeleteSpot = (id: string) => {
+    const updatedSpots = spots.filter(s => s.id !== id);
+    setSpots(updatedSpots);
+    localStorage.setItem('scene_spots', JSON.stringify(updatedSpots));
+    
+    if (socketRef.current) {
+      socketRef.current.send({
+        type: 'broadcast',
+        event: 'delete_spot',
+        payload: { id }
+      });
     }
   };
 
@@ -1086,7 +1193,7 @@ const App: React.FC = () => {
         </div>
 
         <div className="flex p-2 gap-1 bg-black/40 m-6 rounded-2xl border border-white/5 overflow-x-auto no-scrollbar">
-          {(['members', 'chat', 'discover', 'cruise', 'reminders', 'profile'] as const).map(tab => (
+          {(['members', 'chat', 'discover', 'spots', 'cruise', 'reminders', 'profile'] as const).map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)} className={`flex-shrink-0 px-4 py-3 text-[10px] uppercase font-black rounded-xl transition-all ${activeTab === tab ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500'}`}>{tab}</button>
           ))}
         </div>
@@ -1352,6 +1459,124 @@ const App: React.FC = () => {
                  )}
                </div>
             </div>
+          ) : activeTab === 'spots' ? (
+            <div className="space-y-6 animate-in fade-in duration-300">
+              <div className="flex justify-between items-center">
+                <h3 className="text-xl font-black text-white italic uppercase tracking-tighter flex items-center gap-2"><MapPin size={20} className="text-indigo-500"/> Community Spots</h3>
+                <button 
+                  onClick={() => setIsAddingSpot(!isAddingSpot)}
+                  className={`p-2 rounded-lg transition-all ${isAddingSpot ? 'bg-red-500 text-white' : 'bg-indigo-600 text-white'}`}
+                >
+                  {isAddingSpot ? <X size={20}/> : <Plus size={20}/>}
+                </button>
+              </div>
+
+              {isAddingSpot && (
+                <div className="p-5 bg-indigo-500/10 border border-indigo-500/20 rounded-[2rem] space-y-4 animate-in slide-in-from-top-4 duration-300">
+                  <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest text-center">
+                    {newSpotForm.location ? "Location Set! Fill in details." : "Tap anywhere on the map to set location"}
+                  </p>
+                  
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">Spot Name</label>
+                      <input 
+                        type="text" 
+                        value={newSpotForm.name} 
+                        onChange={e => setNewSpotForm({...newSpotForm, name: e.target.value})}
+                        placeholder="e.g. Sonic Meetup, Shell Gas" 
+                        className="w-full bg-slate-900/50 border border-white/5 rounded-xl px-4 py-2 text-sm outline-none focus:border-indigo-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">Type</label>
+                      <select 
+                        value={newSpotForm.type} 
+                        onChange={e => setNewSpotForm({...newSpotForm, type: e.target.value as Spot['type']})}
+                        className="w-full bg-slate-900/50 border border-white/5 rounded-xl px-4 py-2 text-sm outline-none focus:border-indigo-500"
+                      >
+                        <option value="Meetup">Meetup</option>
+                        <option value="Fuel">Fuel</option>
+                        <option value="Food">Food</option>
+                        <option value="Scenic">Scenic</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">Description</label>
+                      <textarea 
+                        value={newSpotForm.description} 
+                        onChange={e => setNewSpotForm({...newSpotForm, description: e.target.value})}
+                        placeholder="What's special about this spot?" 
+                        rows={2}
+                        className="w-full bg-slate-900/50 border border-white/5 rounded-xl px-4 py-2 text-sm outline-none focus:border-indigo-500 resize-none"
+                      />
+                    </div>
+                    <button 
+                      disabled={!newSpotForm.name || !newSpotForm.location}
+                      onClick={handleSaveSpot}
+                      className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-black uppercase text-[10px] tracking-widest shadow-xl shadow-indigo-500/20 transition-all"
+                    >
+                      Add to Community Map
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-4">
+                {spots.length === 0 ? (
+                  <div className="text-center py-20 opacity-20 flex flex-col items-center gap-4">
+                    <MapPin size={48}/>
+                    <p className="font-black uppercase text-[10px] tracking-widest">No community spots added yet</p>
+                  </div>
+                ) : (
+                  spots.map(spot => (
+                    <div key={spot.id} className="p-5 bg-slate-800/30 border border-white/5 rounded-[2rem] group hover:bg-slate-800/50 transition-all">
+                      <div className="flex justify-between items-start mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className={`p-2 rounded-xl ${
+                            spot.type === 'Meetup' ? 'bg-indigo-500/20 text-indigo-400' :
+                            spot.type === 'Fuel' ? 'bg-amber-500/20 text-amber-400' :
+                            spot.type === 'Food' ? 'bg-emerald-500/20 text-emerald-400' :
+                            'bg-sky-500/20 text-sky-400'
+                          }`}>
+                            {spot.type === 'Meetup' ? <Users size={16}/> :
+                             spot.type === 'Fuel' ? <Fuel size={16}/> :
+                             spot.type === 'Food' ? <Utensils size={16}/> :
+                             <Camera size={16}/>}
+                          </div>
+                          <div>
+                            <h4 className="font-black text-white italic uppercase text-sm">{spot.name}</h4>
+                            <span className="text-[8px] text-slate-500 font-black uppercase tracking-widest">{spot.type}</span>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => setMapDisplayCenter(spot.location)}
+                            className="p-2 text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-colors"
+                          >
+                            <Navigation size={16}/>
+                          </button>
+                          {spot.createdBy === currentUser?.id && (
+                            <button 
+                              onClick={() => handleDeleteSpot(spot.id)}
+                              className="p-2 text-slate-600 hover:text-red-400 transition-colors"
+                            >
+                              <Trash2 size={16}/>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {spot.description && (
+                        <p className="text-[10px] text-slate-400 leading-relaxed mb-3">{spot.description}</p>
+                      )}
+                      <div className="flex items-center gap-2 text-[8px] text-slate-600 font-black uppercase tracking-widest">
+                        <Clock size={10}/> Added {new Date(spot.createdAt || '').toLocaleDateString()}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
           ) : activeTab === 'cruise' ? (
             <div className="space-y-6 animate-in fade-in duration-300">
                <h3 className="text-xl font-black text-white italic uppercase tracking-tighter">Cruise Mode</h3>
@@ -1594,9 +1819,47 @@ const App: React.FC = () => {
         <MapContainer center={mapDisplayCenter} zoom={13} zoomControl={false} style={{ height: '100%', width: '100%' }}>
           <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" attribution='&copy; CAR SCENE v2' />
           <MapViewUpdater center={mapDisplayCenter} />
-          <MapEventsHandler onMapClick={handleAddWaypoint} isAddingWaypoint={isAddingWaypoint} />
+          <MapEventsHandler onMapClick={handleMapClick} isAddingWaypoint={isAddingWaypoint} isAddingSpot={isAddingSpot} />
           {cruise.isActive && <CruisePolyline route={cruise.route} />}
           {cruise.isActive && cruise.route.slice(1).map((p, i) => <Marker key={i} position={p} icon={createWaypointIcon(i)}/>)}
+          {spots.map(spot => (
+            <Marker key={spot.id} position={spot.location} icon={createSpotMapIcon(spot.type)}>
+              <Popup className="member-popup">
+                <div className="min-w-[200px] p-0 bg-slate-900 text-white rounded-2xl overflow-hidden border border-white/10 shadow-2xl">
+                  <div className="p-4 bg-slate-800/50 border-b border-white/5">
+                    <h3 className="font-black italic uppercase text-sm text-white">{spot.name}</h3>
+                    <span className="text-[8px] text-indigo-400 font-black uppercase tracking-widest">{spot.type} Spot</span>
+                  </div>
+                  <div className="p-4 space-y-3">
+                    {spot.description && <p className="text-[10px] text-slate-400 leading-relaxed">{spot.description}</p>}
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => setMapDisplayCenter(spot.location)}
+                        className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all"
+                      >
+                        Focus
+                      </button>
+                      {spot.createdBy === currentUser?.id && (
+                        <button 
+                          onClick={() => handleDeleteSpot(spot.id)}
+                          className="p-2 bg-red-500/10 text-red-400 rounded-xl hover:bg-red-500/20 transition-all"
+                        >
+                          <Trash2 size={14}/>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </Popup>
+            </Marker>
+          ))}
+          {isAddingSpot && newSpotForm.location && (
+            <Marker position={newSpotForm.location as [number, number]} icon={createSpotMapIcon(newSpotForm.type as Spot['type'])}>
+              <Popup>
+                <div className="p-2 text-xs font-bold">New Spot Location</div>
+              </Popup>
+            </Marker>
+          )}
           {members
             .filter(m => m.status !== 'Offline' && m.id !== currentUser?.id)
             .filter(m => !showOnlyFavorites || favoriteMemberIds.includes(m.id))

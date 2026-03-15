@@ -11,13 +11,16 @@ export interface Member {
 }
 
 export interface Spot {
-  name:string;
+  id: string;
+  name: string;
   address?: string;
   uri?: string;
   type: 'Meetup' | 'Fuel' | 'Food' | 'Scenic';
-  location?: [number, number];
+  location: [number, number];
   description?: string;
   photo?: string;
+  createdBy?: string;
+  createdAt?: string;
 }
 
 export interface PrivacySettings {
