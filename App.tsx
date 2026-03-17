@@ -14,6 +14,7 @@ import {
   useMapEvents,
   Polyline,
 } from "react-leaflet";
+import { QRCodeCanvas } from "qrcode.react";
 import L from "leaflet";
 import { RealtimeChannel } from "@supabase/supabase-js";
 import {
@@ -351,13 +352,22 @@ const App: React.FC = () => {
       participants: [],
       messages: [],
       unreadCount: 0,
+      typingUsers: [],
     },
   ]);
   const [activeConversationId, setActiveConversationId] = useState<
     string | null
   >(null);
   const [messageInput, setMessageInput] = useState("");
+  const [chatSearchQuery, setChatSearchQuery] = useState("");
+  const [isTyping, setIsTyping] = useState(false);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Map States
+  const [mapLayer, setMapLayer] = useState<"dark" | "satellite" | "traffic">(
+    "dark",
+  );
 
   // Privacy States
   const [privacy, setPrivacy] = useState<PrivacySettings>({
@@ -628,6 +638,43 @@ const App: React.FC = () => {
             localStorage.setItem("scene_spots", JSON.stringify(updated));
             return updated;
           });
+        })
+        .on("broadcast", { event: "typing" }, ({ payload }) => {
+          const { memberId, conversationId, isTyping } = payload;
+          setConversations((prev) =>
+            prev.map((c) => {
+              if (c.id === conversationId) {
+                const typingUsers = c.typingUsers || [];
+                if (isTyping) {
+                  if (!typingUsers.includes(memberId)) {
+                    return { ...c, typingUsers: [...typingUsers, memberId] };
+                  }
+                } else {
+                  return {
+                    ...c,
+                    typingUsers: typingUsers.filter((id) => id !== memberId),
+                  };
+                }
+              }
+              return c;
+            }),
+          );
+        })
+        .on("broadcast", { event: "message_read" }, ({ payload }) => {
+          const { memberId, conversationId } = payload;
+          setConversations((prev) =>
+            prev.map((c) => {
+              if (c.id === conversationId) {
+                return {
+                  ...c,
+                  messages: c.messages.map((m) =>
+                    m.senderId !== memberId ? { ...m, isRead: true } : m,
+                  ),
+                };
+              }
+              return c;
+            }),
+          );
         })
         .subscribe(async (status) => {
           if (status === "SUBSCRIBED") {
@@ -997,13 +1044,25 @@ const App: React.FC = () => {
         hour: "2-digit",
         minute: "2-digit",
       }),
+      isRead: false,
     };
 
-    if (activeConversationId === "group" && socketRef.current) {
+    if (socketRef.current) {
       socketRef.current.send({
         type: "broadcast",
         event: "new_message",
         payload: newMessage,
+      });
+
+      // Stop typing indicator
+      socketRef.current.send({
+        type: "broadcast",
+        event: "typing",
+        payload: {
+          memberId: currentUser.id,
+          conversationId: activeConversationId,
+          isTyping: false,
+        },
       });
     }
 
@@ -1015,6 +1074,62 @@ const App: React.FC = () => {
       ),
     );
     setMessageInput("");
+    setIsTyping(false);
+  };
+
+  const handleTyping = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setMessageInput(e.target.value);
+    if (!currentUser || !activeConversationId || !socketRef.current) return;
+
+    if (!isTyping) {
+      setIsTyping(true);
+      socketRef.current.send({
+        type: "broadcast",
+        event: "typing",
+        payload: {
+          memberId: currentUser.id,
+          conversationId: activeConversationId,
+          isTyping: true,
+        },
+      });
+    }
+
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
+      setIsTyping(false);
+      socketRef.current?.send({
+        type: "broadcast",
+        event: "typing",
+        payload: {
+          memberId: currentUser.id,
+          conversationId: activeConversationId,
+          isTyping: false,
+        },
+      });
+    }, 2000);
+  };
+
+  const markAsRead = (conversationId: string) => {
+    if (!currentUser || !socketRef.current) return;
+    socketRef.current.send({
+      type: "broadcast",
+      event: "message_read",
+      payload: { memberId: currentUser.id, conversationId },
+    });
+
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.id === conversationId
+          ? {
+              ...c,
+              unreadCount: 0,
+              messages: c.messages.map((m) =>
+                m.senderId !== currentUser.id ? { ...m, isRead: true } : m,
+              ),
+            }
+          : c,
+      ),
+    );
   };
 
   const handleShareLocation = (conversationId: string) => {
@@ -2281,16 +2396,39 @@ const App: React.FC = () => {
             </div>
           ) : activeTab === "chat" ? (
             <div className="flex flex-col h-full space-y-4 animate-in fade-in duration-500 overflow-hidden">
+              {/* Chat Thread Selector */}
               <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
                 {conversations.map((c) => (
                   <button
                     key={c.id}
-                    onClick={() => setActiveConversationId(c.id)}
-                    className={`flex-shrink-0 px-4 py-2 rounded-xl border text-[10px] font-black uppercase transition-all ${activeConversationId === c.id ? "bg-indigo-600 border-indigo-500 text-white shadow-lg" : "bg-slate-800/50 border-white/5 text-slate-500"}`}
+                    onClick={() => {
+                      setActiveConversationId(c.id);
+                      markAsRead(c.id);
+                    }}
+                    className={`flex-shrink-0 px-4 py-2 rounded-xl border text-[10px] font-black uppercase transition-all relative ${activeConversationId === c.id ? "bg-indigo-600 border-indigo-500 text-white shadow-lg" : "bg-slate-800/50 border-white/5 text-slate-500"}`}
                   >
                     {c.name}
+                    {c.unreadCount > 0 && (
+                      <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[8px] flex items-center justify-center rounded-full border-2 border-slate-900">
+                        {c.unreadCount}
+                      </span>
+                    )}
                   </button>
                 ))}
+              </div>
+
+              {/* Chat Filter Search */}
+              <div className="relative group">
+                <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-slate-500 group-focus-within:text-indigo-400 transition-colors">
+                  <Search size={14} />
+                </div>
+                <input
+                  type="text"
+                  placeholder="Filter messages or senders..."
+                  value={chatSearchQuery}
+                  onChange={(e) => setChatSearchQuery(e.target.value)}
+                  className="w-full bg-slate-800/50 border border-white/5 rounded-2xl py-2.5 pl-11 pr-4 text-[10px] outline-none focus:border-indigo-500/50 focus:bg-slate-800 transition-all placeholder:text-slate-600 font-bold uppercase tracking-wider"
+                />
               </div>
 
               {activeConversationId ? (
@@ -2298,13 +2436,29 @@ const App: React.FC = () => {
                   <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2 custom-scrollbar">
                     {conversations
                       .find((c) => c.id === activeConversationId)
-                      ?.messages.map((msg) => (
+                      ?.messages.filter(
+                        (msg) =>
+                          msg.text
+                            .toLowerCase()
+                            .includes(chatSearchQuery.toLowerCase()) ||
+                          msg.senderName
+                            .toLowerCase()
+                            .includes(chatSearchQuery.toLowerCase()),
+                      )
+                      .map((msg) => (
                         <div
                           key={msg.id}
                           className={`flex flex-col ${msg.senderId === currentUser?.id ? "items-end" : "items-start"}`}
                         >
+                          <div className="flex items-center gap-2 mb-1">
+                            {msg.senderId !== currentUser?.id && (
+                              <span className="text-[8px] font-black text-indigo-400 uppercase tracking-widest">
+                                {msg.senderName}
+                              </span>
+                            )}
+                          </div>
                           <div
-                            className={`max-w-[85%] p-3 rounded-2xl text-xs font-medium ${msg.senderId === currentUser?.id ? "bg-indigo-600 text-white rounded-tr-none" : "bg-slate-700/50 text-slate-200 rounded-tl-none border border-white/5"}`}
+                            className={`max-w-[85%] p-3 rounded-2xl text-xs font-medium relative ${msg.senderId === currentUser?.id ? "bg-indigo-600 text-white rounded-tr-none" : "bg-slate-700/50 text-slate-200 rounded-tl-none border border-white/5"}`}
                           >
                             {msg.text.includes("google.com/maps") ? (
                               <div className="space-y-2">
@@ -2330,11 +2484,46 @@ const App: React.FC = () => {
                               msg.text
                             )}
                           </div>
-                          <span className="text-[8px] text-slate-500 mt-1 font-bold uppercase tracking-wider">
-                            {msg.timestamp}
-                          </span>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-[8px] text-slate-500 font-bold uppercase tracking-wider">
+                              {msg.timestamp}
+                            </span>
+                            {msg.senderId === currentUser?.id && (
+                              <span className="text-[8px] text-indigo-400 font-black uppercase tracking-widest">
+                                {msg.isRead ? "Read" : "Sent"}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       ))}
+                    {/* Typing Indicator */}
+                    {conversations
+                      .find((c) => c.id === activeConversationId)
+                      ?.typingUsers?.filter((id) => id !== currentUser?.id)
+                      .map((id) => {
+                        const user = members.find((m) => m.id === id);
+                        return (
+                          <div
+                            key={`typing-${id}`}
+                            className="flex items-center gap-2 text-slate-500 animate-pulse"
+                          >
+                            <div className="flex gap-1">
+                              <span className="w-1 h-1 bg-slate-500 rounded-full animate-bounce"></span>
+                              <span
+                                className="w-1 h-1 bg-slate-500 rounded-full animate-bounce"
+                                style={{ animationDelay: "0.2s" }}
+                              ></span>
+                              <span
+                                className="w-1 h-1 bg-slate-500 rounded-full animate-bounce"
+                                style={{ animationDelay: "0.4s" }}
+                              ></span>
+                            </div>
+                            <span className="text-[8px] font-black uppercase tracking-widest">
+                              {user?.name || "Someone"} is typing...
+                            </span>
+                          </div>
+                        );
+                      })}
                     <div ref={messagesEndRef} />
                   </div>
                   <div className="flex gap-2 bg-slate-900/50 p-1 rounded-2xl border border-white/5">
@@ -2351,7 +2540,7 @@ const App: React.FC = () => {
                     <input
                       type="text"
                       value={messageInput}
-                      onChange={(e) => setMessageInput(e.target.value)}
+                      onChange={handleTyping}
                       onKeyDown={(e) =>
                         e.key === "Enter" && handleSendMessage()
                       }
@@ -2440,6 +2629,29 @@ const App: React.FC = () => {
                         placeholder="Year Make Model"
                         className="w-full bg-slate-800/50 border border-white/5 rounded-xl px-4 py-3 text-sm outline-none focus:border-indigo-500 transition-all"
                       />
+                    </div>
+
+                    {/* QR Code Section */}
+                    <div className="pt-6 border-t border-white/5 flex flex-col items-center">
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4 block text-center">
+                        Share Your Profile
+                      </label>
+                      <div className="p-4 bg-white rounded-3xl shadow-2xl shadow-indigo-500/10">
+                        <QRCodeCanvas
+                          value={JSON.stringify({
+                            id: currentUser?.id,
+                            name: currentUser?.name,
+                            car: currentUser?.car,
+                          })}
+                          size={120}
+                          level="H"
+                          includeMargin={false}
+                        />
+                      </div>
+                      <p className="text-[8px] text-slate-600 font-bold uppercase mt-4 tracking-widest text-center max-w-[200px]">
+                        Other members can scan this to quickly find your build
+                        and start a chat.
+                      </p>
                     </div>
 
                     <button
@@ -2557,6 +2769,26 @@ const App: React.FC = () => {
       </div>
 
       <div className="flex-1 relative h-[55%] md:h-full order-1 md:order-2">
+        {/* Map Layer Controls */}
+        <div className="absolute top-6 right-6 z-[1000] flex flex-col gap-2">
+          {(["dark", "satellite", "traffic"] as const).map((layer) => (
+            <button
+              key={layer}
+              onClick={() => setMapLayer(layer)}
+              className={`p-3 rounded-2xl border backdrop-blur-xl transition-all shadow-xl ${mapLayer === layer ? "bg-indigo-600 border-indigo-500 text-white" : "bg-slate-900/80 border-white/10 text-slate-400 hover:text-white"}`}
+              title={`${layer.charAt(0).toUpperCase() + layer.slice(1)} View`}
+            >
+              {layer === "dark" ? (
+                <Ghost size={18} />
+              ) : layer === "satellite" ? (
+                <Eye size={18} />
+              ) : (
+                <Navigation size={18} />
+              )}
+            </button>
+          ))}
+        </div>
+
         <style>{`
           .member-popup .leaflet-popup-content-wrapper {
             background: transparent !important;
@@ -2584,7 +2816,13 @@ const App: React.FC = () => {
           style={{ height: "100%", width: "100%" }}
         >
           <TileLayer
-            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+            url={
+              mapLayer === "satellite"
+                ? "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                : mapLayer === "traffic"
+                  ? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  : "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+            }
             attribution="&copy; CAR SCENE v2"
           />
           <MapViewUpdater center={mapDisplayCenter} />

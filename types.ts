@@ -44,6 +44,7 @@ export interface Message {
   senderAvatar: string;
   text: string;
   timestamp: string;
+  isRead?: boolean;
 }
 
 export interface Conversation {
@@ -53,6 +54,7 @@ export interface Conversation {
   participants: Member[];
   messages: Message[];
   unreadCount: number;
+  typingUsers?: string[];
 }
 
 export interface Cruise {
