@@ -66,6 +66,8 @@ export interface Reminder {
   title: string;
   date: string;
   time: string;
+  locationName?: string;
+  coordinates?: [number, number];
   type: 'Meetup' | 'Cruise' | 'Show' | 'Other';
   alertBefore: 'none' | '1h' | '1d';
   isCompleted: boolean;

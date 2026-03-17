@@ -1,52 +1,110 @@
-
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents, Polyline } from 'react-leaflet';
-import L from 'leaflet';
-import { RealtimeChannel } from '@supabase/supabase-js';
-import { 
-  LogIn, Users, MapPin, Navigation, X, Save, Ghost, Shield, ShieldAlert, 
-  ShieldCheck, UserCheck, Eye, EyeOff, Facebook, Bell, Power,
-  MessageSquare, Send, CornerUpLeft, WifiOff, Share2, Copy,
-  AlertTriangle, AlertCircle, UserPlus, LogOut, ArrowLeft, Loader2, Search, ExternalLink, Settings, Lock,
-  Car, CheckCircle2, Calendar, Clock, Plus, Trash2, ChevronRight, Star,
-  Fuel, Utensils, Camera
-} from 'lucide-react';
-import { Member, Spot, PrivacySettings, Conversation, Message, Cruise, Reminder } from './types';
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
+import {
+  MapContainer,
+  TileLayer,
+  Marker,
+  Popup,
+  useMap,
+  useMapEvents,
+  Polyline,
+} from "react-leaflet";
+import L from "leaflet";
+import { RealtimeChannel } from "@supabase/supabase-js";
+import {
+  LogIn,
+  Users,
+  MapPin,
+  Navigation,
+  X,
+  Save,
+  Ghost,
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
+  UserCheck,
+  Eye,
+  EyeOff,
+  Facebook,
+  Bell,
+  Power,
+  MessageSquare,
+  Send,
+  CornerUpLeft,
+  WifiOff,
+  Share2,
+  Copy,
+  AlertTriangle,
+  AlertCircle,
+  UserPlus,
+  LogOut,
+  ArrowLeft,
+  Loader2,
+  Search,
+  ExternalLink,
+  Settings,
+  Lock,
+  Car,
+  CheckCircle2,
+  Calendar,
+  Clock,
+  Plus,
+  Trash2,
+  ChevronRight,
+  Star,
+  Fuel,
+  Utensils,
+  Camera,
+} from "lucide-react";
+import {
+  Member,
+  Spot,
+  PrivacySettings,
+  Conversation,
+  Message,
+  Cruise,
+  Reminder,
+} from "./types";
 import { GoogleGenAI } from "@google/genai";
-import { supabase } from './src/lib/supabase';
+import { supabase } from "./src/lib/supabase";
 
 // Custom Member Map Icon based on status
 const createMemberMapIcon = (member: Member) => {
-  let iconHtml = '';
-  let bgColor = '';
-  let borderColor = 'border-white';
-  let iconComponent = '';
-  let size = 'w-8 h-8';
-  let ring = '';
+  let iconHtml = "";
+  let bgColor = "";
+  let borderColor = "border-white";
+  let iconComponent = "";
+  let size = "w-8 h-8";
+  let ring = "";
 
   switch (member.status) {
-    case 'Cruising':
-      bgColor = 'bg-emerald-500';
+    case "Cruising":
+      bgColor = "bg-emerald-500";
       iconComponent = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"></polygon></svg>`;
-      ring = 'animate-pulse';
+      ring = "animate-pulse";
       break;
-    case 'Parked':
-      bgColor = 'bg-slate-600';
+    case "Parked":
+      bgColor = "bg-slate-600";
       iconComponent = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>`;
       break;
-    case 'Heading to meet':
-      bgColor = 'bg-blue-500';
+    case "Heading to meet":
+      bgColor = "bg-blue-500";
       iconComponent = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>`;
       break;
-    case 'At Meetup':
-      bgColor = 'bg-purple-600';
+    case "At Meetup":
+      bgColor = "bg-purple-600";
       iconComponent = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 18a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2"/><rect x="9" y="9" width="6" height="4" rx="1"/><path d="M12 2L4 5l8 3 8-3-8-3z"/></svg>`;
-      size = 'w-9 h-9';
+      size = "w-9 h-9";
       break;
-    case 'On Detour':
-      bgColor = 'bg-yellow-500';
+    case "On Detour":
+      bgColor = "bg-yellow-500";
       iconComponent = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
-      borderColor = 'border-black';
+      borderColor = "border-black";
       break;
     default:
       return null;
@@ -58,49 +116,50 @@ const createMemberMapIcon = (member: Member) => {
 
   return L.divIcon({
     html: iconHtml,
-    className: '',
+    className: "",
     iconSize: [36, 36],
     iconAnchor: [18, 18],
   });
 };
 
-const createSpotMapIcon = (type: Spot['type']) => {
-  let bgColor = 'bg-indigo-600';
-  let icon = '';
+const createSpotMapIcon = (type: Spot["type"]) => {
+  let bgColor = "bg-indigo-600";
+  let icon = "";
 
   switch (type) {
-    case 'Meetup':
-      bgColor = 'bg-purple-600';
+    case "Meetup":
+      bgColor = "bg-purple-600";
       icon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 18a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2"/><rect x="9" y="9" width="6" height="4" rx="1"/><path d="M12 2L4 5l8 3 8-3-8-3z"/></svg>`;
       break;
-    case 'Fuel':
-      bgColor = 'bg-orange-500';
+    case "Fuel":
+      bgColor = "bg-orange-500";
       icon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="22" x2="21" y2="22"/><path d="M6 12V4c0-1.1.9-2 2-2h6c1.1 0 2 .9 2 2v16"/><path d="M14 9h2.4c1.1 0 2 .9 2 2v11"/><circle cx="10" cy="9" r="2"/></svg>`;
       break;
-    case 'Food':
-      bgColor = 'bg-red-500';
+    case "Food":
+      bgColor = "bg-red-500";
       icon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>`;
       break;
-    case 'Scenic':
-      bgColor = 'bg-emerald-500';
+    case "Scenic":
+      bgColor = "bg-emerald-500";
       icon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`;
       break;
   }
 
   return L.divIcon({
     html: `<div class="w-10 h-10 rounded-2xl ${bgColor} border-2 border-white shadow-xl flex items-center justify-center transform transition-transform hover:scale-110">${icon}</div>`,
-    className: '',
+    className: "",
     iconSize: [40, 40],
     iconAnchor: [20, 20],
   });
 };
 
-const createWaypointIcon = (index: number) => L.divIcon({
-  html: `<div class="w-8 h-8 rounded-full bg-indigo-600 border-2 border-white shadow-lg flex items-center justify-center font-bold text-white text-sm">${index + 1}</div>`,
-  className: '',
-  iconSize: [32, 32],
-  iconAnchor: [16, 16],
-});
+const createWaypointIcon = (index: number) =>
+  L.divIcon({
+    html: `<div class="w-8 h-8 rounded-full bg-indigo-600 border-2 border-white shadow-lg flex items-center justify-center font-bold text-white text-sm">${index + 1}</div>`,
+    className: "",
+    iconSize: [32, 32],
+    iconAnchor: [16, 16],
+  });
 
 const DEFAULT_CENTER: [number, number] = [30.4213, -87.2169]; // Pensacola, FL
 const DEFAULT_AVATAR = "https://placehold.co/150x150/1e293b/FFFFFF?text=?";
@@ -122,101 +181,140 @@ const MapViewUpdater = ({ center }: { center: [number, number] }) => {
   return null;
 };
 
-const MapEventsHandler = ({ onMapClick, isAddingWaypoint, isAddingSpot }: { onMapClick: (latlng: L.LatLng) => void, isAddingWaypoint: boolean, isAddingSpot: boolean }) => {
+const MapEventsHandler = ({
+  onMapClick,
+  isAddingWaypoint,
+  isAddingSpot,
+}: {
+  onMapClick: (latlng: L.LatLng) => void;
+  isAddingWaypoint: boolean;
+  isAddingSpot: boolean;
+}) => {
   useMapEvents({
     click(e) {
       if (isAddingWaypoint || isAddingSpot) {
         onMapClick(e.latlng);
       }
-    }
+    },
   });
   return null;
 };
 
 const CruisePolyline = ({ route }: { route: [number, number][] }) => {
   if (route.length < 2) return null;
-  return <Polyline pathOptions={{ color: '#4f46e5', weight: 6, opacity: 0.8, lineCap: 'round', lineJoin: 'round' }} positions={route} />;
+  return (
+    <Polyline
+      pathOptions={{
+        color: "#4f46e5",
+        weight: 6,
+        opacity: 0.8,
+        lineCap: "round",
+        lineJoin: "round",
+      }}
+      positions={route}
+    />
+  );
 };
 
 const App: React.FC = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const [loginMode, setLoginMode] = useState<'initial' | 'email-login' | 'email-signup'>('initial');
+  const [loginMode, setLoginMode] = useState<
+    "initial" | "email-login" | "email-signup"
+  >("initial");
   const [loginError, setLoginError] = useState<string | null>(null);
-  const [guestUsername, setGuestUsername] = useState('');
+  const [guestUsername, setGuestUsername] = useState("");
   const [guestAvatar, setGuestAvatar] = useState<string | null>(null);
 
   const [emailForm, setEmailForm] = useState({
-    email: '',
-    password: '',
-    name: '',
-    avatar: '',
-    rememberMe: false
+    email: "",
+    password: "",
+    name: "",
+    avatar: "",
+    rememberMe: false,
   });
 
   const [resetSent, setResetSent] = useState(false);
 
   const [currentUser, setCurrentUser] = useState<Member | null>(null);
-  const [currentUserLocation, setCurrentUserLocation] = useState<[number, number] | null>(null);
-  const [mapDisplayCenter, setMapDisplayCenter] = useState<[number, number]>(DEFAULT_CENTER);
+  const [currentUserLocation, setCurrentUserLocation] = useState<
+    [number, number] | null
+  >(null);
+  const [mapDisplayCenter, setMapDisplayCenter] =
+    useState<[number, number]>(DEFAULT_CENTER);
   const [members, setMembers] = useState<Member[]>([]);
-  const [activeTab, setActiveTab] = useState<'members' | 'chat' | 'discover' | 'privacy' | 'cruise' | 'reminders' | 'profile' | 'spots'>('members');
+  const [activeTab, setActiveTab] = useState<
+    | "members"
+    | "chat"
+    | "discover"
+    | "privacy"
+    | "cruise"
+    | "reminders"
+    | "profile"
+    | "spots"
+  >("members");
   const [shareFeedback, setShareFeedback] = useState<string | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
-  
+
   // Spots State
   const [spots, setSpots] = useState<Spot[]>(() => {
-    const saved = localStorage.getItem('scene_spots');
+    const saved = localStorage.getItem("scene_spots");
     return saved ? JSON.parse(saved) : [];
   });
   const [isAddingSpot, setIsAddingSpot] = useState(false);
   const [newSpotForm, setNewSpotForm] = useState<Partial<Spot>>({
-    name: '',
-    type: 'Meetup',
-    description: ''
+    name: "",
+    type: "Meetup",
+    description: "",
   });
-  
+
   // Profile Edit State
   const [profileForm, setProfileForm] = useState({
-    name: '',
-    car: '',
-    avatar: ''
+    name: "",
+    car: "",
+    avatar: "",
   });
-  
-  const [activeNotifications, setActiveNotifications] = useState<Reminder[]>([]);
+
+  const [activeNotifications, setActiveNotifications] = useState<Reminder[]>(
+    [],
+  );
 
   // Reminders States
   const [reminders, setReminders] = useState<Reminder[]>(() => {
-    const saved = localStorage.getItem('scene_reminders');
+    const saved = localStorage.getItem("scene_reminders");
     return saved ? JSON.parse(saved) : [];
   });
   const [isAddingReminder, setIsAddingReminder] = useState(false);
   const [newReminder, setNewReminder] = useState<Partial<Reminder>>({
-    title: '',
-    date: '',
-    time: '',
-    type: 'Meetup',
-    alertBefore: '1h'
+    title: "",
+    date: "",
+    time: "",
+    locationName: "",
+    type: "Meetup",
+    alertBefore: "1h",
   });
 
   useEffect(() => {
     const checkReminders = () => {
       const now = new Date();
-      setReminders(prev => {
+      setReminders((prev) => {
         let changed = false;
-        const updated = prev.map(rem => {
-          if (rem.isCompleted || rem.alertFired || rem.alertBefore === 'none') return rem;
+        const updated = prev.map((rem) => {
+          if (rem.isCompleted || rem.alertFired || rem.alertBefore === "none")
+            return rem;
 
           const eventTime = new Date(`${rem.date} ${rem.time}`);
           const diffMs = eventTime.getTime() - now.getTime();
           const diffHours = diffMs / (1000 * 60 * 60);
 
           let shouldAlert = false;
-          if (rem.alertBefore === '1h' && diffHours <= 1 && diffHours > 0) shouldAlert = true;
-          if (rem.alertBefore === '1d' && diffHours <= 24 && diffHours > 0) shouldAlert = true;
+          if (rem.alertBefore === "1h" && diffHours <= 1 && diffHours > 0)
+            shouldAlert = true;
+          if (rem.alertBefore === "1d" && diffHours <= 24 && diffHours > 0)
+            shouldAlert = true;
 
           if (shouldAlert) {
-            setActiveNotifications(prevNotif => [...prevNotif, rem]);
+            setActiveNotifications((prevNotif) => [...prevNotif, rem]);
             changed = true;
             return { ...rem, alertFired: true };
           }
@@ -232,67 +330,94 @@ const App: React.FC = () => {
   }, []);
 
   const dismissNotification = (id: string) => {
-    setActiveNotifications(prev => prev.filter(n => n.id !== id));
+    setActiveNotifications((prev) => prev.filter((n) => n.id !== id));
   };
 
   // Discover/Search States
-  const [discoverSearchQuery, setDiscoverSearchQuery] = useState('');
-  const [memberSearchQuery, setMemberSearchQuery] = useState('');
+  const [discoverSearchQuery, setDiscoverSearchQuery] = useState("");
+  const [memberSearchQuery, setMemberSearchQuery] = useState("");
   const [isSearchingMaps, setIsSearchingMaps] = useState(false);
-  const [mapsGroundingResults, setMapsGroundingResults] = useState<{text: string, chunks: any[]}>({text: '', chunks: []});
+  const [mapsGroundingResults, setMapsGroundingResults] = useState<{
+    text: string;
+    chunks: any[];
+  }>({ text: "", chunks: [] });
 
   // Chat States
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
-  const [messageInput, setMessageInput] = useState('');
+  const [conversations, setConversations] = useState<Conversation[]>([
+    {
+      id: "group",
+      name: "Community Chat",
+      avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=group",
+      participants: [],
+      messages: [],
+      unreadCount: 0,
+    },
+  ]);
+  const [activeConversationId, setActiveConversationId] = useState<
+    string | null
+  >(null);
+  const [messageInput, setMessageInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Privacy States
   const [privacy, setPrivacy] = useState<PrivacySettings>({
     ghostMode: false,
-    visibility: 'everyone'
+    visibility: "everyone",
   });
 
   const [favoriteMemberIds, setFavoriteMemberIds] = useState<string[]>(() => {
-    const saved = localStorage.getItem('scene_favorites');
+    const saved = localStorage.getItem("scene_favorites");
     return saved ? JSON.parse(saved) : [];
   });
   const [showOnlyFavorites, setShowOnlyFavorites] = useState(false);
 
   const toggleFavorite = (id: string) => {
-    setFavoriteMemberIds(prev => {
-      const updated = prev.includes(id) ? prev.filter(fid => fid !== id) : [...prev, id];
-      localStorage.setItem('scene_favorites', JSON.stringify(updated));
+    setFavoriteMemberIds((prev) => {
+      const updated = prev.includes(id)
+        ? prev.filter((fid) => fid !== id)
+        : [...prev, id];
+      localStorage.setItem("scene_favorites", JSON.stringify(updated));
       return updated;
     });
   };
 
   // Cruise State
-  const [cruise, setCruise] = useState<Cruise>({ isActive: false, leaderId: null, route: [] });
+  const [cruise, setCruise] = useState<Cruise>({
+    isActive: false,
+    leaderId: null,
+    route: [],
+  });
   const locationWatchId = useRef<number | null>(null);
   const socketRef = useRef<RealtimeChannel | null>(null);
   const [isAddingWaypoint, setIsAddingWaypoint] = useState(false);
 
-  const STATUS_OPTIONS: Member['status'][] = ['Cruising', 'Parked', 'Heading to meet', 'At Meetup', 'On Detour', 'Offline'];
+  const STATUS_OPTIONS: Member["status"][] = [
+    "Cruising",
+    "Parked",
+    "Heading to meet",
+    "At Meetup",
+    "On Detour",
+    "Offline",
+  ];
 
   // Persist Reminders
   useEffect(() => {
-    localStorage.setItem('scene_reminders', JSON.stringify(reminders));
+    localStorage.setItem("scene_reminders", JSON.stringify(reminders));
   }, [reminders]);
 
   // Scroll to bottom of chat when new messages arrive
   useEffect(() => {
-    if (activeTab === 'chat' && messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (activeTab === "chat" && messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [conversations, activeConversationId, activeTab]);
 
   useEffect(() => {
     if (isLoggedIn && currentUser) {
       const groupChat: Conversation = {
-        id: 'group',
-        name: 'Panhandle Pop-Up Meets',
-        avatar: 'https://placehold.co/100x100/3730a3/FFFFFF?text=P',
+        id: "group",
+        name: "Panhandle Pop-Up Meets",
+        avatar: "https://placehold.co/100x100/3730a3/FFFFFF?text=P",
         participants: [currentUser],
         messages: [],
         unreadCount: 0,
@@ -301,59 +426,78 @@ const App: React.FC = () => {
       setActiveConversationId(null);
     }
   }, [isLoggedIn, currentUser]);
-  
-  const startLocationWatch = useCallback((memberId: string) => {
-    if (locationWatchId.current !== null) {
-      navigator.geolocation.clearWatch(locationWatchId.current);
-    }
 
-    if (!navigator.geolocation) {
-      setLocationError("Geolocation is not supported by your browser");
-      return;
-    }
+  const startLocationWatch = useCallback(
+    (memberId: string) => {
+      if (locationWatchId.current !== null) {
+        navigator.geolocation.clearWatch(locationWatchId.current);
+      }
 
-    locationWatchId.current = navigator.geolocation.watchPosition(
-      (watchPos) => {
-        const newLocation: [number, number] = [watchPos.coords.latitude, watchPos.coords.longitude];
-        setCurrentUserLocation(newLocation);
-        setLocationError(null);
-        
-        // Emit to server
-        if (socketRef.current) {
-          socketRef.current.send({
-            type: 'broadcast',
-            event: 'location_update',
-            payload: { memberId, location: newLocation }
-          });
-        }
+      if (!navigator.geolocation) {
+        setLocationError("Geolocation is not supported by your browser");
+        return;
+      }
 
-        setMembers(prevMembers => prevMembers.map(m =>
-          m.id === memberId ? { ...m, location: newLocation, lastSeen: new Date().toLocaleTimeString() } : m
-        ));
-        if (cruise.leaderId === memberId) {
-          setCruise(prev => ({ ...prev, route: [...prev.route, newLocation] }));
-          setMapDisplayCenter(newLocation);
-        }
-      },
-      (err) => {
-        console.error("Error watching position:", err);
-        let message = "An unknown error occurred while retrieving your location.";
-        switch (err.code) {
-          case err.PERMISSION_DENIED:
-            message = "Location access denied. Please enable permissions to use live tracking.";
-            break;
-          case err.POSITION_UNAVAILABLE:
-            message = "Location information is unavailable.";
-            break;
-          case err.TIMEOUT:
-            message = "Location request timed out.";
-            break;
-        }
-        setLocationError(message);
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-    );
-  }, [cruise.leaderId]);
+      locationWatchId.current = navigator.geolocation.watchPosition(
+        (watchPos) => {
+          const newLocation: [number, number] = [
+            watchPos.coords.latitude,
+            watchPos.coords.longitude,
+          ];
+          setCurrentUserLocation(newLocation);
+          setLocationError(null);
+
+          // Emit to server
+          if (socketRef.current) {
+            socketRef.current.send({
+              type: "broadcast",
+              event: "location_update",
+              payload: { memberId, location: newLocation },
+            });
+          }
+
+          setMembers((prevMembers) =>
+            prevMembers.map((m) =>
+              m.id === memberId
+                ? {
+                    ...m,
+                    location: newLocation,
+                    lastSeen: new Date().toLocaleTimeString(),
+                  }
+                : m,
+            ),
+          );
+          if (cruise.leaderId === memberId) {
+            setCruise((prev) => ({
+              ...prev,
+              route: [...prev.route, newLocation],
+            }));
+            setMapDisplayCenter(newLocation);
+          }
+        },
+        (err) => {
+          console.error("Error watching position:", err);
+          let message =
+            "An unknown error occurred while retrieving your location.";
+          switch (err.code) {
+            case err.PERMISSION_DENIED:
+              message =
+                "Location access denied. Please enable permissions to use live tracking.";
+              break;
+            case err.POSITION_UNAVAILABLE:
+              message = "Location information is unavailable.";
+              break;
+            case err.TIMEOUT:
+              message = "Location request timed out.";
+              break;
+          }
+          setLocationError(message);
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
+      );
+    },
+    [cruise.leaderId],
+  );
 
   useEffect(() => {
     if (locationError) {
@@ -372,34 +516,42 @@ const App: React.FC = () => {
 
   useEffect(() => {
     // Check API health
-    fetch('/api/health')
-      .then(res => res.json())
-      .then(data => console.log("API Health Check:", data))
-      .catch(err => console.error("API Health Check Failed:", err));
+    fetch("/api/health")
+      .then((res) => res.json())
+      .then((data) => console.log("API Health Check:", data))
+      .catch((err) => console.error("API Health Check Failed:", err));
 
     // Check for remembered user
-    const savedUser = localStorage.getItem('scene_remembered_user');
+    const savedUser = localStorage.getItem("scene_remembered_user");
     if (savedUser) {
       try {
         const { id, name, avatar, car } = JSON.parse(savedUser);
         completeLogin(id, name, avatar, car);
       } catch (e) {
-        localStorage.removeItem('scene_remembered_user');
+        localStorage.removeItem("scene_remembered_user");
       }
     }
   }, []);
 
-  const completeLogin = (id: string, name: string, avatar: string, car: string) => {
+  const completeLogin = (
+    id: string,
+    name: string,
+    avatar: string,
+    car: string,
+  ) => {
     setIsLoggedIn(true);
     setIsLoggingIn(false);
 
     if (emailForm.rememberMe) {
-      localStorage.setItem('scene_remembered_user', JSON.stringify({ id, name, avatar, car }));
+      localStorage.setItem(
+        "scene_remembered_user",
+        JSON.stringify({ id, name, avatar, car }),
+      );
     }
 
     // Initialize Supabase Realtime Channel
     if (supabase) {
-      const channel = supabase.channel('scene_main', {
+      const channel = supabase.channel("scene_main", {
         config: {
           presence: {
             key: id,
@@ -410,19 +562,19 @@ const App: React.FC = () => {
       socketRef.current = channel;
 
       channel
-        .on('presence', { event: 'sync' }, () => {
+        .on("presence", { event: "sync" }, () => {
           const newState = channel.presenceState();
-          setMembers(prevMembers => {
+          setMembers((prevMembers) => {
             const onlineMembers: Member[] = [];
             Object.values(newState).forEach((presences: any) => {
               presences.forEach((p: any) => {
                 if (p.user) {
-                  const existing = prevMembers.find(m => m.id === p.user.id);
+                  const existing = prevMembers.find((m) => m.id === p.user.id);
                   onlineMembers.push({
                     ...p.user,
                     location: existing?.location || p.user.location,
                     status: existing?.status || p.user.status,
-                    lastSeen: existing?.lastSeen || p.user.lastSeen
+                    lastSeen: existing?.lastSeen || p.user.lastSeen,
                   });
                 }
               });
@@ -430,37 +582,61 @@ const App: React.FC = () => {
             return onlineMembers;
           });
         })
-        .on('broadcast', { event: 'location_update' }, ({ payload }) => {
+        .on("broadcast", { event: "location_update" }, ({ payload }) => {
           const { memberId, location } = payload;
-          setMembers(prev => prev.map(m => m.id === memberId ? { ...m, location, lastSeen: new Date().toLocaleTimeString() } : m));
+          setMembers((prev) =>
+            prev.map((m) =>
+              m.id === memberId
+                ? { ...m, location, lastSeen: new Date().toLocaleTimeString() }
+                : m,
+            ),
+          );
         })
-        .on('broadcast', { event: 'new_message' }, ({ payload }) => {
-          setConversations(prev => prev.map(c => c.id === 'group' ? { ...c, messages: [...c.messages, payload] } : c));
+        .on("broadcast", { event: "new_message" }, ({ payload }) => {
+          setConversations((prev) =>
+            prev.map((c) => {
+              if (c.id === "group") {
+                // Prevent duplicate messages if sender also receives broadcast
+                if (c.messages.some((m) => m.id === payload.id)) return c;
+                return { ...c, messages: [...c.messages, payload] };
+              }
+              return c;
+            }),
+          );
         })
-        .on('broadcast', { event: 'status_update' }, ({ payload }) => {
+        .on("broadcast", { event: "status_update" }, ({ payload }) => {
           const { memberId, status } = payload;
-          setMembers(prev => prev.map(m => m.id === memberId ? { ...m, status, lastSeen: new Date().toLocaleTimeString() } : m));
+          setMembers((prev) =>
+            prev.map((m) =>
+              m.id === memberId
+                ? { ...m, status, lastSeen: new Date().toLocaleTimeString() }
+                : m,
+            ),
+          );
         })
-        .on('broadcast', { event: 'new_spot' }, ({ payload }) => {
-          setSpots(prev => {
-            if (prev.some(s => s.id === payload.id)) return prev;
+        .on("broadcast", { event: "new_spot" }, ({ payload }) => {
+          setSpots((prev) => {
+            if (prev.some((s) => s.id === payload.id)) return prev;
             const updated = [...prev, payload];
-            localStorage.setItem('scene_spots', JSON.stringify(updated));
+            localStorage.setItem("scene_spots", JSON.stringify(updated));
             return updated;
           });
         })
-        .on('broadcast', { event: 'delete_spot' }, ({ payload }) => {
-          setSpots(prev => {
-            const updated = prev.filter(s => s.id !== payload.id);
-            localStorage.setItem('scene_spots', JSON.stringify(updated));
+        .on("broadcast", { event: "delete_spot" }, ({ payload }) => {
+          setSpots((prev) => {
+            const updated = prev.filter((s) => s.id !== payload.id);
+            localStorage.setItem("scene_spots", JSON.stringify(updated));
             return updated;
           });
         })
         .subscribe(async (status) => {
-          if (status === 'SUBSCRIBED') {
+          if (status === "SUBSCRIBED") {
             navigator.geolocation.getCurrentPosition(
               async (pos) => {
-                const initialLocation: [number, number] = [pos.coords.latitude, pos.coords.longitude];
+                const initialLocation: [number, number] = [
+                  pos.coords.latitude,
+                  pos.coords.longitude,
+                ];
                 setCurrentUserLocation(initialLocation);
                 setMapDisplayCenter(initialLocation);
 
@@ -469,7 +645,7 @@ const App: React.FC = () => {
                   name,
                   car,
                   location: initialLocation,
-                  status: 'Cruising',
+                  status: "Cruising",
                   avatar,
                   lastSeen: new Date().toLocaleTimeString(),
                   isFavorite: false,
@@ -477,10 +653,10 @@ const App: React.FC = () => {
                 setCurrentUser(newCurrentUser);
                 setProfileForm({
                   name: newCurrentUser.name,
-                  car: newCurrentUser.car || '',
-                  avatar: newCurrentUser.avatar
+                  car: newCurrentUser.car || "",
+                  avatar: newCurrentUser.avatar,
                 });
-                
+
                 await channel.track({ user: newCurrentUser });
                 startLocationWatch(newCurrentUser.id);
               },
@@ -490,7 +666,7 @@ const App: React.FC = () => {
                   name,
                   car,
                   location: DEFAULT_CENTER,
-                  status: 'Cruising',
+                  status: "Cruising",
                   avatar,
                   lastSeen: new Date().toLocaleTimeString(),
                   isFavorite: false,
@@ -498,14 +674,14 @@ const App: React.FC = () => {
                 setCurrentUser(newCurrentUser);
                 setProfileForm({
                   name: newCurrentUser.name,
-                  car: newCurrentUser.car || '',
-                  avatar: newCurrentUser.avatar
+                  car: newCurrentUser.car || "",
+                  avatar: newCurrentUser.avatar,
                 });
                 setCurrentUserLocation(DEFAULT_CENTER);
                 setMapDisplayCenter(DEFAULT_CENTER);
-                
+
                 await channel.track({ user: newCurrentUser });
-              }
+              },
             );
           }
         });
@@ -514,40 +690,47 @@ const App: React.FC = () => {
 
   const handleGuestLogin = () => {
     if (!guestUsername.trim()) {
-      setLoginError('Guest username cannot be empty.');
+      setLoginError("Guest username cannot be empty.");
       return;
     }
     setLoginError(null);
     setIsLoggingIn(true);
-    const id = `guest-${guestUsername.trim().replace(/\s+/g, '-')}-${Date.now()}`;
+    const id = `guest-${guestUsername.trim().replace(/\s+/g, "-")}-${Date.now()}`;
     const avatar = guestAvatar || `https://i.pravatar.cc/150?u=${id}`;
     setTimeout(() => {
-      completeLogin(id, guestUsername.trim(), avatar, 'Guest Member');
+      completeLogin(id, guestUsername.trim(), avatar, "Guest Member");
     }, 1000);
   };
 
-  const handleEmailAuth = async (mode: 'login' | 'signup') => {
+  const handleEmailAuth = async (mode: "login" | "signup") => {
     setLoginError(null);
     setIsLoggingIn(true);
-    
+
     try {
       // Try Supabase first if configured
       if (supabase) {
-        if (mode === 'signup') {
+        if (mode === "signup") {
           const { data, error } = await supabase.auth.signUp({
             email: emailForm.email,
             password: emailForm.password,
             options: {
               data: {
                 name: emailForm.name,
-                avatar: emailForm.avatar || `https://i.pravatar.cc/150?u=${emailForm.email}`,
-                car: 'New Member'
-              }
-            }
+                avatar:
+                  emailForm.avatar ||
+                  `https://i.pravatar.cc/150?u=${emailForm.email}`,
+                car: "New Member",
+              },
+            },
           });
           if (error) throw error;
           if (data.user) {
-            completeLogin(data.user.id, data.user.user_metadata.name, data.user.user_metadata.avatar, data.user.user_metadata.car);
+            completeLogin(
+              data.user.id,
+              data.user.user_metadata.name,
+              data.user.user_metadata.avatar,
+              data.user.user_metadata.car,
+            );
           }
         } else {
           const { data, error } = await supabase.auth.signInWithPassword({
@@ -556,32 +739,48 @@ const App: React.FC = () => {
           });
           if (error) throw error;
           if (data.user) {
-            completeLogin(data.user.id, data.user.user_metadata.name, data.user.user_metadata.avatar, data.user.user_metadata.car);
+            completeLogin(
+              data.user.id,
+              data.user.user_metadata.name,
+              data.user.user_metadata.avatar,
+              data.user.user_metadata.car,
+            );
           }
         }
         return;
       }
 
       // Fallback to Express API
-      const endpoint = mode === 'login' ? '/api/auth/email/login' : '/api/auth/email/signup';
+      const endpoint =
+        mode === "login" ? "/api/auth/email/login" : "/api/auth/email/signup";
       const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(emailForm)
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(emailForm),
       });
-      
+
       const contentType = response.headers.get("content-type");
       if (contentType && contentType.includes("application/json")) {
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'Authentication failed');
-        completeLogin(data.user.id, data.user.name, data.user.avatar, data.user.car);
+        if (!response.ok)
+          throw new Error(data.error || "Authentication failed");
+        completeLogin(
+          data.user.id,
+          data.user.name,
+          data.user.avatar,
+          data.user.car,
+        );
       } else {
         const text = await response.text();
         console.error("Non-JSON response received:", text);
         if (response.status === 413) {
-          throw new Error("Profile picture is too large. Please use a smaller image.");
+          throw new Error(
+            "Profile picture is too large. Please use a smaller image.",
+          );
         }
-        throw new Error(`Server error (${response.status}). Please try again later.`);
+        throw new Error(
+          `Server error (${response.status}). Please try again later.`,
+        );
       }
     } catch (error: any) {
       setIsLoggingIn(false);
@@ -591,14 +790,17 @@ const App: React.FC = () => {
 
   const handleForgotPassword = () => {
     if (!emailForm.email.trim()) {
-      setLoginError('Please enter your email address first.');
+      setLoginError("Please enter your email address first.");
       return;
     }
     setResetSent(true);
     setLoginError(null);
     setTimeout(() => setResetSent(false), 5000);
   };
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, target: 'guest' | 'profile' | 'email') => {
+  const handleFileChange = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    target: "guest" | "profile" | "email",
+  ) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -610,15 +812,17 @@ const App: React.FC = () => {
     const reader = new FileReader();
     reader.onloadend = () => {
       const base64String = reader.result as string;
-      if (target === 'guest') setGuestAvatar(base64String);
-      if (target === 'profile') setProfileForm(prev => ({ ...prev, avatar: base64String }));
-      if (target === 'email') setEmailForm(prev => ({ ...prev, avatar: base64String }));
+      if (target === "guest") setGuestAvatar(base64String);
+      if (target === "profile")
+        setProfileForm((prev) => ({ ...prev, avatar: base64String }));
+      if (target === "email")
+        setEmailForm((prev) => ({ ...prev, avatar: base64String }));
     };
     reader.readAsDataURL(file);
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('scene_remembered_user');
+    localStorage.removeItem("scene_remembered_user");
     if (locationWatchId.current !== null) {
       navigator.geolocation.clearWatch(locationWatchId.current);
       locationWatchId.current = null;
@@ -651,21 +855,25 @@ const App: React.FC = () => {
             retrievalConfig: {
               latLng: {
                 latitude: lat,
-                longitude: lng
-              }
-            }
-          }
+                longitude: lng,
+              },
+            },
+          },
         },
       });
 
-      const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+      const chunks =
+        response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
       setMapsGroundingResults({
         text: response.text || "No details found.",
-        chunks: chunks
+        chunks: chunks,
       });
     } catch (error) {
       console.error("Maps search failed:", error);
-      setMapsGroundingResults({ text: "Search failed. Check your connection.", chunks: [] });
+      setMapsGroundingResults({
+        text: "Search failed. Check your connection.",
+        chunks: [],
+      });
     } finally {
       setIsSearchingMaps(false);
     }
@@ -673,75 +881,86 @@ const App: React.FC = () => {
 
   const handleStartCruise = () => {
     if (!currentUserLocation || !currentUser) return;
-    setCruise({ isActive: true, leaderId: currentUser.id, route: [currentUserLocation] });
+    setCruise({
+      isActive: true,
+      leaderId: currentUser.id,
+      route: [currentUserLocation],
+    });
     setMapDisplayCenter(currentUserLocation);
-    setActiveTab('cruise');
+    setActiveTab("cruise");
     startLocationWatch(currentUser.id);
   };
 
   const handleEndCruise = () => {
     if (!currentUser) return;
     setCruise({ isActive: false, leaderId: null, route: [] });
-    if (currentUser.status !== 'Offline' && currentUserLocation) {
-        startLocationWatch(currentUser.id);
+    if (currentUser.status !== "Offline" && currentUserLocation) {
+      startLocationWatch(currentUser.id);
     }
   };
 
   const handleMapClick = (latlng: L.LatLng) => {
     if (!currentUser) return;
-    
-    if (isAddingWaypoint && cruise.isActive && cruise.leaderId === currentUser.id) {
-      setCruise(prev => ({
+
+    if (
+      isAddingWaypoint &&
+      cruise.isActive &&
+      cruise.leaderId === currentUser.id
+    ) {
+      setCruise((prev) => ({
         ...prev,
-        route: [...prev.route, [latlng.lat, latlng.lng]]
+        route: [...prev.route, [latlng.lat, latlng.lng]],
       }));
       setIsAddingWaypoint(false);
     } else if (isAddingSpot) {
-      setNewSpotForm(prev => ({ ...prev, location: [latlng.lat, latlng.lng] }));
+      setNewSpotForm((prev) => ({
+        ...prev,
+        location: [latlng.lat, latlng.lng],
+      }));
     }
   };
 
   const handleSaveSpot = () => {
     if (!newSpotForm.name || !newSpotForm.location || !currentUser) return;
-    
+
     const spot: Spot = {
       id: `spot-${Date.now()}`,
       name: newSpotForm.name,
-      type: newSpotForm.type as Spot['type'],
+      type: newSpotForm.type as Spot["type"],
       location: newSpotForm.location as [number, number],
       description: newSpotForm.description,
       createdBy: currentUser.id,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
     };
-    
+
     const updatedSpots = [...spots, spot];
     setSpots(updatedSpots);
-    localStorage.setItem('scene_spots', JSON.stringify(updatedSpots));
-    
+    localStorage.setItem("scene_spots", JSON.stringify(updatedSpots));
+
     if (socketRef.current) {
       socketRef.current.send({
-        type: 'broadcast',
-        event: 'new_spot',
-        payload: spot
+        type: "broadcast",
+        event: "new_spot",
+        payload: spot,
       });
     }
-    
+
     setIsAddingSpot(false);
-    setNewSpotForm({ name: '', type: 'Meetup', description: '' });
+    setNewSpotForm({ name: "", type: "Meetup", description: "" });
     setShareFeedback("Spot added to the community map!");
     setTimeout(() => setShareFeedback(null), 3000);
   };
 
   const handleDeleteSpot = (id: string) => {
-    const updatedSpots = spots.filter(s => s.id !== id);
+    const updatedSpots = spots.filter((s) => s.id !== id);
     setSpots(updatedSpots);
-    localStorage.setItem('scene_spots', JSON.stringify(updatedSpots));
-    
+    localStorage.setItem("scene_spots", JSON.stringify(updatedSpots));
+
     if (socketRef.current) {
       socketRef.current.send({
-        type: 'broadcast',
-        event: 'delete_spot',
-        payload: { id }
+        type: "broadcast",
+        event: "delete_spot",
+        payload: { id },
       });
     }
   };
@@ -749,8 +968,8 @@ const App: React.FC = () => {
   const handleStartDM = (member: Member) => {
     if (!currentUser) return;
     const conversationId = member.id;
-    const existing = conversations.find(c => c.id === conversationId);
-    
+    const existing = conversations.find((c) => c.id === conversationId);
+
     if (!existing) {
       const newDM: Conversation = {
         id: conversationId,
@@ -758,12 +977,12 @@ const App: React.FC = () => {
         avatar: member.avatar,
         participants: [currentUser, member],
         messages: [],
-        unreadCount: 0
+        unreadCount: 0,
       };
-      setConversations(prev => [...prev, newDM]);
+      setConversations((prev) => [...prev, newDM]);
     }
     setActiveConversationId(conversationId);
-    setActiveTab('chat');
+    setActiveTab("chat");
   };
 
   const handleSendMessage = () => {
@@ -774,40 +993,57 @@ const App: React.FC = () => {
       senderName: currentUser.name,
       senderAvatar: currentUser.avatar,
       text: messageInput,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      timestamp: new Date().toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
     };
-    
-    if (activeConversationId === 'group' && socketRef.current) {
+
+    if (activeConversationId === "group" && socketRef.current) {
       socketRef.current.send({
-        type: 'broadcast',
-        event: 'new_message',
-        payload: newMessage
+        type: "broadcast",
+        event: "new_message",
+        payload: newMessage,
       });
-    } else {
-      setConversations(conversations.map(c => c.id === activeConversationId ? { ...c, messages: [...c.messages, newMessage] } : c));
     }
-    setMessageInput('');
+
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.id === activeConversationId
+          ? { ...c, messages: [...c.messages, newMessage] }
+          : c,
+      ),
+    );
+    setMessageInput("");
   };
 
   const handleShareLocation = (conversationId: string) => {
     if (!currentUser || !currentUserLocation) return;
     const [lat, lng] = currentUserLocation;
     const shareLink = `Check out my live location on Scene: https://www.google.com/maps?q=${lat},${lng}`;
-    
+
     const newMessage: Message = {
       id: `loc-share-${Date.now()}`,
       senderId: currentUser.id,
       senderName: currentUser.name,
       senderAvatar: currentUser.avatar,
       text: shareLink,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      timestamp: new Date().toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
     };
 
-    setConversations(prev => prev.map(c => 
-      c.id === conversationId ? { ...c, messages: [...c.messages, newMessage] } : c
-    ));
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.id === conversationId
+          ? { ...c, messages: [...c.messages, newMessage] }
+          : c,
+      ),
+    );
 
-    const conversationName = conversations.find(c => c.id === conversationId)?.name || 'Group';
+    const conversationName =
+      conversations.find((c) => c.id === conversationId)?.name || "Group";
     setShareFeedback(`Location shared to ${conversationName}`);
     setTimeout(() => setShareFeedback(null), 3000);
   };
@@ -824,42 +1060,46 @@ const App: React.FC = () => {
       ...currentUser,
       name: profileForm.name || currentUser.name,
       car: profileForm.car,
-      avatar: profileForm.avatar || currentUser.avatar
+      avatar: profileForm.avatar || currentUser.avatar,
     };
     setCurrentUser(updatedUser);
-    setMembers(prev => prev.map(m => m.id === currentUser.id ? updatedUser : m));
+    setMembers((prev) =>
+      prev.map((m) => (m.id === currentUser.id ? updatedUser : m)),
+    );
     if (socketRef.current) {
       socketRef.current.track({ user: updatedUser });
     }
     setShareFeedback("Profile Updated Successfully");
     setTimeout(() => setShareFeedback(null), 3000);
-    setActiveTab('members');
+    setActiveTab("members");
   };
 
   const handleStatusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     if (!currentUser) return;
-    const newStatus = e.target.value as Member['status'];
+    const newStatus = e.target.value as Member["status"];
     const updatedUser = { ...currentUser, status: newStatus };
     setCurrentUser(updatedUser);
-    setMembers(members.map(m => m.id === currentUser.id ? updatedUser : m));
-    
+    setMembers(members.map((m) => (m.id === currentUser.id ? updatedUser : m)));
+
     if (socketRef.current) {
       socketRef.current.track({ user: updatedUser });
       socketRef.current.send({
-        type: 'broadcast',
-        event: 'status_update',
-        payload: { memberId: currentUser.id, status: newStatus }
+        type: "broadcast",
+        event: "status_update",
+        payload: { memberId: currentUser.id, status: newStatus },
       });
     }
 
-    if (newStatus === 'Offline') {
+    if (newStatus === "Offline") {
       if (locationWatchId.current !== null) {
         navigator.geolocation.clearWatch(locationWatchId.current);
         locationWatchId.current = null;
       }
-      if (cruise.isActive && cruise.leaderId === currentUser.id) handleEndCruise();
+      if (cruise.isActive && cruise.leaderId === currentUser.id)
+        handleEndCruise();
     } else {
-      if (locationWatchId.current === null && currentUserLocation) startLocationWatch(currentUser.id);
+      if (locationWatchId.current === null && currentUserLocation)
+        startLocationWatch(currentUser.id);
     }
   };
 
@@ -870,32 +1110,51 @@ const App: React.FC = () => {
       title: newReminder.title,
       date: newReminder.date,
       time: newReminder.time,
-      type: (newReminder.type as Reminder['type']) || 'Meetup',
-      alertBefore: (newReminder.alertBefore as Reminder['alertBefore']) || '1h',
+      locationName: newReminder.locationName,
+      type: (newReminder.type as Reminder["type"]) || "Meetup",
+      alertBefore: (newReminder.alertBefore as Reminder["alertBefore"]) || "1h",
       isCompleted: false,
-      alertFired: false
+      alertFired: false,
     };
-    setReminders(prev => [...prev, reminder].sort((a, b) => new Date(`${a.date} ${a.time}`).getTime() - new Date(`${b.date} ${b.time}`).getTime()));
+    setReminders((prev) =>
+      [...prev, reminder].sort(
+        (a, b) =>
+          new Date(`${a.date} ${a.time}`).getTime() -
+          new Date(`${b.date} ${b.time}`).getTime(),
+      ),
+    );
     setIsAddingReminder(false);
-    setNewReminder({ title: '', date: '', time: '', type: 'Meetup', alertBefore: '1h' });
+    setNewReminder({
+      title: "",
+      date: "",
+      time: "",
+      locationName: "",
+      type: "Meetup",
+      alertBefore: "1h",
+    });
   };
 
   const handleDeleteReminder = (id: string) => {
-    setReminders(prev => prev.filter(r => r.id !== id));
+    setReminders((prev) => prev.filter((r) => r.id !== id));
   };
 
   const userMarkerIcon = useMemo(() => {
     if (!currentUser) return null;
     const isGhost = privacy.ghostMode;
-    const opacity = isGhost ? 'opacity-30' : 'opacity-100';
-    const bgColor = isGhost ? 'bg-slate-700' : 'bg-indigo-500';
-    const ringPulse = isGhost ? '' : 'animate-pulse';
+    const opacity = isGhost ? "opacity-30" : "opacity-100";
+    const bgColor = isGhost ? "bg-slate-700" : "bg-indigo-500";
+    const ringPulse = isGhost ? "" : "animate-pulse";
     const iconHtml = `
       <div class="relative w-10 h-10 rounded-full ${bgColor} border-4 border-white shadow-2xl flex items-center justify-center transition-all duration-700 ${opacity} ${ringPulse}">
         <img src="${currentUser.avatar || DEFAULT_AVATAR}" class="w-full h-full rounded-full object-cover p-0.5"/>
-        ${isGhost ? `<div class="absolute -top-1 -right-1 bg-slate-900 rounded-full p-0.5 border border-white/20"><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 10h.01"/><path d="M15 10h.01"/><path d="M12 2a8 8 0 0 0-8 8v12l3-3 2.5 2.5L12 19l2.5 2.5L17 19l3 3V10a8 8 0 0 0-8-8z"/></svg></div>` : ''}
+        ${isGhost ? `<div class="absolute -top-1 -right-1 bg-slate-900 rounded-full p-0.5 border border-white/20"><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 10h.01"/><path d="M15 10h.01"/><path d="M12 2a8 8 0 0 0-8 8v12l3-3 2.5 2.5L12 19l2.5 2.5L17 19l3 3V10a8 8 0 0 0-8-8z"/></svg></div>` : ""}
       </div>`;
-    return L.divIcon({ html: iconHtml, className: '', iconSize: [40, 40], iconAnchor: [20, 20] });
+    return L.divIcon({
+      html: iconHtml,
+      className: "",
+      iconSize: [40, 40],
+      iconAnchor: [20, 20],
+    });
   }, [privacy.ghostMode, cruise.isActive, cruise.leaderId, currentUser]);
 
   if (!isLoggedIn) {
@@ -903,32 +1162,47 @@ const App: React.FC = () => {
       <div className="flex flex-col items-center justify-center h-full bg-[#020617] text-slate-50 p-6 text-center overflow-hidden">
         {isLoggingIn ? (
           <div className="flex flex-col items-center animate-in zoom-in fade-in duration-700">
-            <div className="relative mb-12"> <div className="w-24 h-24 border-b-4 border-indigo-500 border-solid rounded-full animate-spin"></div> <div className="absolute inset-0 flex items-center justify-center"> <Loader2 className="text-indigo-400 w-8 h-8 animate-pulse" /> </div> </div>
-            <h2 className="text-3xl font-black mb-2 italic tracking-tighter uppercase tracking-widest">Scene</h2>
-            <p className="text-slate-400 font-bold uppercase text-[10px] tracking-widest">Authenticating...</p>
+            <div className="relative mb-12">
+              {" "}
+              <div className="w-24 h-24 border-b-4 border-indigo-500 border-solid rounded-full animate-spin"></div>{" "}
+              <div className="absolute inset-0 flex items-center justify-center">
+                {" "}
+                <Loader2 className="text-indigo-400 w-8 h-8 animate-pulse" />{" "}
+              </div>{" "}
+            </div>
+            <h2 className="text-3xl font-black mb-2 italic tracking-tighter uppercase tracking-widest">
+              Scene
+            </h2>
+            <p className="text-slate-400 font-bold uppercase text-[10px] tracking-widest">
+              Authenticating...
+            </p>
           </div>
         ) : (
           <div className="max-w-xl w-full max-h-full overflow-y-auto no-scrollbar py-10">
             <div className="mb-12 relative flex items-center justify-center gap-4">
               <Users className="w-20 h-20 text-indigo-500" />
               <div className="text-left">
-                <p className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.4em]">Official App</p>
-                <h1 className="text-7xl font-black tracking-tighter uppercase italic leading-none">Scene</h1>
+                <p className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.4em]">
+                  Official App
+                </p>
+                <h1 className="text-7xl font-black tracking-tighter uppercase italic leading-none">
+                  Scene
+                </h1>
               </div>
             </div>
-            
-            {loginMode === 'initial' && (
+
+            {loginMode === "initial" && (
               <div className="space-y-6">
-                <button 
-                  onClick={() => setLoginMode('email-login')}
+                <button
+                  onClick={() => setLoginMode("email-login")}
                   className="w-full flex items-center justify-center gap-4 bg-slate-800 hover:bg-slate-700 text-white px-10 py-6 rounded-[2rem] font-black transition-all shadow-xl active:scale-95 group border border-white/5"
                 >
                   <LogIn className="w-6 h-6 text-indigo-400" />
                   Sign In with Email
                 </button>
 
-                <button 
-                  onClick={() => setLoginMode('email-signup')}
+                <button
+                  onClick={() => setLoginMode("email-signup")}
                   className="w-full flex items-center justify-center gap-4 bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 px-10 py-6 rounded-[2rem] font-black transition-all shadow-xl active:scale-95 group border border-indigo-500/20"
                 >
                   <UserPlus className="w-6 h-6 text-indigo-400" />
@@ -937,33 +1211,42 @@ const App: React.FC = () => {
 
                 <div className="relative flex items-center py-4">
                   <div className="flex-grow border-t border-slate-800"></div>
-                  <span className="flex-shrink mx-4 text-slate-500 font-black uppercase text-[10px] tracking-widest">or browse as guest</span>
+                  <span className="flex-shrink mx-4 text-slate-500 font-black uppercase text-[10px] tracking-widest">
+                    or browse as guest
+                  </span>
                   <div className="flex-grow border-t border-slate-800"></div>
                 </div>
 
                 <div className="space-y-4 bg-slate-900/50 p-6 rounded-3xl border border-white/5">
                   <div className="flex flex-col items-center gap-4 mb-2">
                     <div className="relative group">
-                      <img 
-                        src={guestAvatar || DEFAULT_AVATAR} 
+                      <img
+                        src={guestAvatar || DEFAULT_AVATAR}
                         className="w-20 h-20 rounded-full object-cover border-2 border-indigo-500/50"
                       />
                       <label className="absolute inset-0 flex items-center justify-center bg-black/60 rounded-full opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity">
                         <Plus className="text-white" />
-                        <input type="file" accept="image/*" className="hidden" onChange={(e) => handleFileChange(e, 'guest')} />
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => handleFileChange(e, "guest")}
+                        />
                       </label>
                     </div>
-                    <p className="text-[10px] font-bold text-slate-500 uppercase">Upload Guest Photo</p>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase">
+                      Upload Guest Photo
+                    </p>
                   </div>
-                  <input 
-                    type="text" 
-                    placeholder="Guest Username" 
-                    value={guestUsername} 
-                    onChange={(e) => setGuestUsername(e.target.value)} 
-                    className="w-full bg-slate-800/50 border border-slate-700 rounded-2xl py-4 px-6 text-base outline-none focus:border-indigo-500 transition-colors" 
+                  <input
+                    type="text"
+                    placeholder="Guest Username"
+                    value={guestUsername}
+                    onChange={(e) => setGuestUsername(e.target.value)}
+                    className="w-full bg-slate-800/50 border border-slate-700 rounded-2xl py-4 px-6 text-base outline-none focus:border-indigo-500 transition-colors"
                   />
-                  <button 
-                    onClick={handleGuestLogin} 
+                  <button
+                    onClick={handleGuestLogin}
                     className="w-full flex items-center justify-center gap-4 bg-indigo-600 hover:bg-indigo-500 text-white px-10 py-5 rounded-[2rem] font-black shadow-xl active:scale-95 border border-white/5"
                   >
                     <UserPlus className="w-6 h-6" /> Join Scene
@@ -972,83 +1255,123 @@ const App: React.FC = () => {
               </div>
             )}
 
-            {(loginMode === 'email-login' || loginMode === 'email-signup') && (
+            {(loginMode === "email-login" || loginMode === "email-signup") && (
               <div className="space-y-6 animate-in slide-in-from-right duration-300">
-                <button onClick={() => setLoginMode('initial')} className="flex items-center gap-2 text-slate-400 hover:text-white font-bold uppercase text-[10px] tracking-widest mb-4">
+                <button
+                  onClick={() => setLoginMode("initial")}
+                  className="flex items-center gap-2 text-slate-400 hover:text-white font-bold uppercase text-[10px] tracking-widest mb-4"
+                >
                   <ArrowLeft size={14} /> Back to options
                 </button>
-                
+
                 <h2 className="text-3xl font-black italic uppercase tracking-tighter text-white">
-                  {loginMode === 'email-login' ? 'Sign In' : 'Create Profile'}
+                  {loginMode === "email-login" ? "Sign In" : "Create Profile"}
                 </h2>
 
                 <div className="space-y-4 bg-slate-900/50 p-8 rounded-3xl border border-white/5 text-left">
-                  {loginMode === 'email-signup' && (
+                  {loginMode === "email-signup" && (
                     <>
                       <div className="flex flex-col items-center gap-4 mb-6">
                         <div className="relative group">
-                          <img 
-                            src={emailForm.avatar || DEFAULT_AVATAR} 
+                          <img
+                            src={emailForm.avatar || DEFAULT_AVATAR}
                             className="w-24 h-24 rounded-full object-cover border-2 border-indigo-500"
                           />
                           <label className="absolute inset-0 flex items-center justify-center bg-black/60 rounded-full opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity">
                             <Plus className="text-white" />
-                            <input type="file" accept="image/*" className="hidden" onChange={(e) => handleFileChange(e, 'email')} />
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => handleFileChange(e, "email")}
+                            />
                           </label>
                         </div>
-                        <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Upload Profile Picture</p>
+                        <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">
+                          Upload Profile Picture
+                        </p>
                       </div>
                       <div>
-                        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 ml-2">Display Name</label>
-                        <input 
-                          type="text" 
-                          placeholder="Your Name" 
-                          value={emailForm.name} 
-                          onChange={(e) => setEmailForm({...emailForm, name: e.target.value})}
-                          className="w-full bg-slate-800/50 border border-slate-700 rounded-2xl py-4 px-6 text-base outline-none focus:border-indigo-500 transition-colors" 
+                        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 ml-2">
+                          Display Name
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Your Name"
+                          value={emailForm.name}
+                          onChange={(e) =>
+                            setEmailForm({ ...emailForm, name: e.target.value })
+                          }
+                          className="w-full bg-slate-800/50 border border-slate-700 rounded-2xl py-4 px-6 text-base outline-none focus:border-indigo-500 transition-colors"
                         />
                       </div>
                     </>
                   )}
                   <div>
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 ml-2">Email Address</label>
-                    <input 
-                      type="email" 
-                      placeholder="email@example.com" 
-                      value={emailForm.email} 
-                      onChange={(e) => setEmailForm({...emailForm, email: e.target.value})}
-                      className="w-full bg-slate-800/50 border border-slate-700 rounded-2xl py-4 px-6 text-base outline-none focus:border-indigo-500 transition-colors" 
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 ml-2">
+                      Email Address
+                    </label>
+                    <input
+                      type="email"
+                      placeholder="email@example.com"
+                      value={emailForm.email}
+                      onChange={(e) =>
+                        setEmailForm({ ...emailForm, email: e.target.value })
+                      }
+                      className="w-full bg-slate-800/50 border border-slate-700 rounded-2xl py-4 px-6 text-base outline-none focus:border-indigo-500 transition-colors"
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 ml-2">Password</label>
-                    <input 
-                      type="password" 
-                      placeholder="••••••••" 
-                      value={emailForm.password} 
-                      onChange={(e) => setEmailForm({...emailForm, password: e.target.value})}
-                      className="w-full bg-slate-800/50 border border-slate-700 rounded-2xl py-4 px-6 text-base outline-none focus:border-indigo-500 transition-colors" 
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 ml-2">
+                      Password
+                    </label>
+                    <input
+                      type="password"
+                      placeholder="••••••••"
+                      value={emailForm.password}
+                      onChange={(e) =>
+                        setEmailForm({ ...emailForm, password: e.target.value })
+                      }
+                      className="w-full bg-slate-800/50 border border-slate-700 rounded-2xl py-4 px-6 text-base outline-none focus:border-indigo-500 transition-colors"
                     />
                   </div>
 
-                  {loginMode === 'email-login' && (
+                  {loginMode === "email-login" && (
                     <div className="flex items-center justify-between px-2">
                       <label className="flex items-center gap-2 cursor-pointer group">
                         <div className="relative">
-                          <input 
-                            type="checkbox" 
+                          <input
+                            type="checkbox"
                             checked={emailForm.rememberMe}
-                            onChange={(e) => setEmailForm({...emailForm, rememberMe: e.target.checked})}
+                            onChange={(e) =>
+                              setEmailForm({
+                                ...emailForm,
+                                rememberMe: e.target.checked,
+                              })
+                            }
                             className="peer sr-only"
                           />
                           <div className="w-5 h-5 border-2 border-slate-700 rounded-md bg-slate-800/50 peer-checked:bg-indigo-600 peer-checked:border-indigo-500 transition-all"></div>
                           <div className="absolute inset-0 flex items-center justify-center text-white scale-0 peer-checked:scale-100 transition-transform">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                            <svg
+                              width="12"
+                              height="12"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="4"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <polyline points="20 6 9 17 4 12"></polyline>
+                            </svg>
                           </div>
                         </div>
-                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest group-hover:text-slate-400 transition-colors">Remember Me</span>
+                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest group-hover:text-slate-400 transition-colors">
+                          Remember Me
+                        </span>
                       </label>
-                      <button 
+                      <button
                         onClick={handleForgotPassword}
                         className="text-[10px] font-black text-indigo-400 uppercase tracking-widest hover:text-indigo-300 transition-colors"
                       >
@@ -1063,20 +1386,34 @@ const App: React.FC = () => {
                     </div>
                   )}
 
-                  <button 
-                    onClick={() => handleEmailAuth(loginMode === 'email-login' ? 'login' : 'signup')}
+                  <button
+                    onClick={() =>
+                      handleEmailAuth(
+                        loginMode === "email-login" ? "login" : "signup",
+                      )
+                    }
                     className="w-full flex items-center justify-center gap-4 bg-indigo-600 hover:bg-indigo-500 text-white px-10 py-5 rounded-[2rem] font-black shadow-xl active:scale-95 border border-white/5 mt-4"
                   >
-                    {loginMode === 'email-login' ? 'Sign In' : 'Create Profile'}
+                    {loginMode === "email-login" ? "Sign In" : "Create Profile"}
                   </button>
 
                   <p className="text-center text-slate-500 text-xs font-bold mt-4">
-                    {loginMode === 'email-login' ? "Don't have a profile?" : "Already have a profile?"}
-                    <button 
-                      onClick={() => setLoginMode(loginMode === 'email-login' ? 'email-signup' : 'email-login')}
+                    {loginMode === "email-login"
+                      ? "Don't have a profile?"
+                      : "Already have a profile?"}
+                    <button
+                      onClick={() =>
+                        setLoginMode(
+                          loginMode === "email-login"
+                            ? "email-signup"
+                            : "email-login",
+                        )
+                      }
                       className="text-indigo-400 hover:text-indigo-300 ml-2 underline"
                     >
-                      {loginMode === 'email-login' ? 'Create one now' : 'Sign in instead'}
+                      {loginMode === "email-login"
+                        ? "Create one now"
+                        : "Sign in instead"}
                     </button>
                   </p>
                 </div>
@@ -1095,12 +1432,12 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="flex h-full w-full bg-[#020617] font-sans overflow-hidden text-slate-50 relative">
+    <div className="flex flex-col md:flex-row h-full w-full bg-[#020617] font-sans overflow-hidden text-slate-50 relative">
       {/* Floating Notifications */}
       {shareFeedback && (
         <div className="absolute top-6 left-1/2 -translate-x-1/2 z-[5000] animate-in slide-in-from-top duration-300">
           <div className="bg-emerald-500 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 font-black uppercase text-[10px] tracking-widest border border-white/20">
-            <CheckCircle2 size={16}/>
+            <CheckCircle2 size={16} />
             {shareFeedback}
           </div>
         </div>
@@ -1109,20 +1446,23 @@ const App: React.FC = () => {
       {locationError && (
         <div className="absolute top-6 left-1/2 -translate-x-1/2 z-[5000] animate-in slide-in-from-top duration-300">
           <div className="bg-red-500 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 font-black uppercase text-[10px] tracking-widest border border-white/20">
-            <AlertCircle size={16}/>
+            <AlertCircle size={16} />
             <span className="max-w-xs">{locationError}</span>
             <div className="flex items-center gap-2 ml-2">
-              <button 
+              <button
                 onClick={() => {
                   setLocationError(null);
                   if (currentUser) startLocationWatch(currentUser.id);
-                }} 
+                }}
                 className="px-3 py-1 bg-white/20 hover:bg-white/30 rounded-lg transition-colors text-[8px] font-black uppercase"
               >
                 Retry
               </button>
-              <button onClick={() => setLocationError(null)} className="p-1 hover:bg-white/10 rounded-full transition-colors">
-                <X size={14}/>
+              <button
+                onClick={() => setLocationError(null)}
+                className="p-1 hover:bg-white/10 rounded-full transition-colors"
+              >
+                <X size={14} />
               </button>
             </div>
           </div>
@@ -1131,22 +1471,35 @@ const App: React.FC = () => {
 
       {/* Reminder Notifications */}
       <div className="absolute top-20 right-6 z-[5000] space-y-4 pointer-events-none">
-        {activeNotifications.map(notif => (
-          <div key={notif.id} className="pointer-events-auto bg-indigo-600 text-white p-5 rounded-[2rem] shadow-2xl border border-white/20 w-80 animate-in slide-in-from-right duration-500">
+        {activeNotifications.map((notif) => (
+          <div
+            key={notif.id}
+            className="pointer-events-auto bg-indigo-600 text-white p-5 rounded-[2rem] shadow-2xl border border-white/20 w-80 animate-in slide-in-from-right duration-500"
+          >
             <div className="flex justify-between items-start mb-2">
               <div className="flex items-center gap-2">
-                <Bell size={16} className="animate-bounce"/>
-                <span className="text-[10px] font-black uppercase tracking-widest">Upcoming Event</span>
+                <Bell size={16} className="animate-bounce" />
+                <span className="text-[10px] font-black uppercase tracking-widest">
+                  Upcoming Event
+                </span>
               </div>
-              <button onClick={() => dismissNotification(notif.id)} className="p-1 hover:bg-white/10 rounded-full">
-                <X size={14}/>
+              <button
+                onClick={() => dismissNotification(notif.id)}
+                className="p-1 hover:bg-white/10 rounded-full"
+              >
+                <X size={14} />
               </button>
             </div>
-            <h4 className="font-black italic uppercase text-lg mb-1">{notif.title}</h4>
-            <p className="text-[10px] font-bold uppercase opacity-80">Starts at {notif.time} on {new Date(notif.date).toLocaleDateString()}</p>
-            <button 
+            <h4 className="font-black italic uppercase text-lg mb-1">
+              {notif.title}
+            </h4>
+            <p className="text-[10px] font-bold uppercase opacity-80">
+              Starts at {notif.time} on{" "}
+              {new Date(notif.date).toLocaleDateString()}
+            </p>
+            <button
               onClick={() => {
-                setActiveTab('reminders');
+                setActiveTab("reminders");
                 dismissNotification(notif.id);
               }}
               className="mt-4 w-full py-2 bg-white text-indigo-600 rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-slate-100 transition-all"
@@ -1157,342 +1510,615 @@ const App: React.FC = () => {
         ))}
       </div>
 
-      <div className="w-full md:w-[400px] flex flex-col border-r border-white/5 bg-slate-900/60 backdrop-blur-3xl z-[1000] h-full shadow-2xl overflow-hidden">
-        <div className="p-8 border-b border-white/5">
+      <div className="w-full md:w-[400px] flex flex-col border-r border-white/5 bg-slate-900/60 backdrop-blur-3xl z-[1000] h-[45%] md:h-full shadow-2xl overflow-hidden order-2 md:order-1">
+        <div className="p-4 md:p-8 border-b border-white/5">
           <div className="flex items-center justify-between mb-4">
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-3xl font-black italic uppercase text-white tracking-tighter">Scene</h1>
+                <h1 className="text-3xl font-black italic uppercase text-white tracking-tighter">
+                  Scene
+                </h1>
                 {privacy.ghostMode && (
-                  <span className="bg-slate-800 text-indigo-400 p-1 rounded-lg border border-indigo-500/20" title="Ghost Mode Active">
-                    <Ghost size={14}/>
+                  <span
+                    className="bg-slate-800 text-indigo-400 p-1 rounded-lg border border-indigo-500/20"
+                    title="Ghost Mode Active"
+                  >
+                    <Ghost size={14} />
                   </span>
                 )}
               </div>
-              <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-[0.3em]">Panhandle Pop-Up Meets</p>
+              <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-[0.3em]">
+                Panhandle Pop-Up Meets
+              </p>
             </div>
             <div className="flex gap-2">
-              <button onClick={() => setActiveTab('profile')} className={`p-2 rounded-lg transition-colors ${activeTab === 'profile' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`} title="Edit Profile"><Settings size={18}/></button>
-              <button onClick={() => setActiveTab('privacy')} className={`p-2 rounded-lg transition-colors ${activeTab === 'privacy' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`} title="Privacy Settings"><Shield size={18}/></button>
-              <button onClick={handleLogout} className="p-2 bg-red-500/10 text-red-400 rounded-lg hover:bg-red-500/20" title="Logout"><LogOut size={18}/></button>
+              <button
+                onClick={() => setActiveTab("profile")}
+                className={`p-2 rounded-lg transition-colors ${activeTab === "profile" ? "bg-indigo-600 text-white" : "bg-slate-800 text-slate-400 hover:text-white"}`}
+                title="Edit Profile"
+              >
+                <Settings size={18} />
+              </button>
+              <button
+                onClick={() => setActiveTab("privacy")}
+                className={`p-2 rounded-lg transition-colors ${activeTab === "privacy" ? "bg-indigo-600 text-white" : "bg-slate-800 text-slate-400 hover:text-white"}`}
+                title="Privacy Settings"
+              >
+                <Shield size={18} />
+              </button>
+              <button
+                onClick={handleLogout}
+                className="p-2 bg-red-500/10 text-red-400 rounded-lg hover:bg-red-500/20"
+                title="Logout"
+              >
+                <LogOut size={18} />
+              </button>
             </div>
           </div>
           {currentUser && (
             <div className="flex items-center gap-3 p-3 bg-slate-800/50 rounded-xl border border-white/5 relative overflow-hidden">
-              {privacy.ghostMode && <div className="absolute inset-0 bg-indigo-500/5 backdrop-blur-[1px] pointer-events-none"></div>}
-              <img src={currentUser.avatar || DEFAULT_AVATAR} className={`w-10 h-10 rounded-full object-cover ${privacy.ghostMode ? 'opacity-40 grayscale' : ''}`}/>
+              {privacy.ghostMode && (
+                <div className="absolute inset-0 bg-indigo-500/5 backdrop-blur-[1px] pointer-events-none"></div>
+              )}
+              <img
+                src={currentUser.avatar || DEFAULT_AVATAR}
+                className={`w-10 h-10 rounded-full object-cover ${privacy.ghostMode ? "opacity-40 grayscale" : ""}`}
+              />
               <div className="flex-1">
-                <h3 className="font-bold text-slate-300 text-sm leading-tight">{currentUser.name}</h3>
-                {currentUser.car && <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-wide mb-1 opacity-90">{currentUser.car}</p>}
-                <select value={currentUser.status} onChange={handleStatusChange} className="bg-transparent text-[10px] text-slate-400 border-none outline-none appearance-none cursor-pointer font-bold uppercase tracking-wider">
-                  {STATUS_OPTIONS.map(s => <option key={s} value={s} className="bg-slate-800">{s}</option>)}
+                <h3 className="font-bold text-slate-300 text-sm leading-tight">
+                  {currentUser.name}
+                </h3>
+                {currentUser.car && (
+                  <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-wide mb-1 opacity-90">
+                    {currentUser.car}
+                  </p>
+                )}
+                <select
+                  value={currentUser.status}
+                  onChange={handleStatusChange}
+                  className="bg-transparent text-[10px] text-slate-400 border-none outline-none appearance-none cursor-pointer font-bold uppercase tracking-wider"
+                >
+                  {STATUS_OPTIONS.map((s) => (
+                    <option key={s} value={s} className="bg-slate-800">
+                      {s}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
           )}
         </div>
 
-        <div className="flex p-2 gap-1 bg-black/40 m-6 rounded-2xl border border-white/5 overflow-x-auto no-scrollbar">
-          {(['members', 'chat', 'discover', 'spots', 'cruise', 'reminders', 'profile'] as const).map(tab => (
-            <button key={tab} onClick={() => setActiveTab(tab)} className={`flex-shrink-0 px-4 py-3 text-[10px] uppercase font-black rounded-xl transition-all ${activeTab === tab ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500'}`}>{tab}</button>
+        <div className="flex p-2 gap-1 bg-black/40 m-4 md:m-6 rounded-2xl border border-white/5 overflow-x-auto no-scrollbar">
+          {(
+            [
+              "members",
+              "chat",
+              "discover",
+              "spots",
+              "cruise",
+              "reminders",
+              "profile",
+            ] as const
+          ).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`flex-shrink-0 px-4 py-3 text-[10px] uppercase font-black rounded-xl transition-all ${activeTab === tab ? "bg-indigo-600 text-white shadow-lg" : "text-slate-500"}`}
+            >
+              {tab === "reminders" ? "Events" : tab}
+            </button>
           ))}
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 pb-8 custom-scrollbar">
-          {activeTab === 'discover' ? (
+        <div className="flex-1 overflow-y-auto px-4 md:px-6 pb-8 custom-scrollbar">
+          {activeTab === "discover" ? (
             <div className="space-y-6 animate-in fade-in duration-300">
               <div className="pt-2">
-                <h3 className="text-xl font-black text-white italic uppercase tracking-tighter mb-4 flex items-center gap-2"><MapPin size={20} className="text-indigo-500"/> Discover Places</h3>
+                <h3 className="text-xl font-black text-white italic uppercase tracking-tighter mb-4 flex items-center gap-2">
+                  <MapPin size={20} className="text-indigo-500" /> Discover
+                  Places
+                </h3>
                 <div className="flex gap-2">
-                  <input 
-                    type="text" 
-                    placeholder="Search car meets, gas, food..." 
+                  <input
+                    type="text"
+                    placeholder="Search car meets, gas, food..."
                     value={discoverSearchQuery}
                     onChange={(e) => setDiscoverSearchQuery(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSearchWithMaps()}
+                    onKeyDown={(e) =>
+                      e.key === "Enter" && handleSearchWithMaps()
+                    }
                     className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 text-sm outline-none focus:border-indigo-500"
                   />
-                  <button onClick={handleSearchWithMaps} disabled={isSearchingMaps} className="p-2 bg-indigo-600 rounded-xl hover:bg-indigo-700 disabled:opacity-50">
-                    {isSearchingMaps ? <Loader2 size={18} className="animate-spin"/> : <Search size={18}/>}
+                  <button
+                    onClick={handleSearchWithMaps}
+                    disabled={isSearchingMaps}
+                    className="p-2 bg-indigo-600 rounded-xl hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    {isSearchingMaps ? (
+                      <Loader2 size={18} className="animate-spin" />
+                    ) : (
+                      <Search size={18} />
+                    )}
                   </button>
                 </div>
               </div>
 
               {mapsGroundingResults.text && (
                 <div className="bg-slate-800/40 border border-white/5 rounded-2xl p-4 space-y-4">
-                  <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">{mapsGroundingResults.text}</p>
-                  
+                  <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">
+                    {mapsGroundingResults.text}
+                  </p>
+
                   {mapsGroundingResults.chunks.length > 0 && (
                     <div className="pt-4 border-t border-white/5">
-                      <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-3">Live Map References</h4>
+                      <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-3">
+                        Live Map References
+                      </h4>
                       <div className="grid gap-2">
-                        {mapsGroundingResults.chunks.map((chunk: any, i: number) => (
-                          chunk.maps && (
-                            <a 
-                              key={i} 
-                              href={chunk.maps.uri} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="flex items-center justify-between p-3 bg-slate-900/50 rounded-xl border border-white/5 hover:border-indigo-500/50 transition-all group"
-                            >
-                              <div className="flex items-center gap-2 truncate">
-                                <MapPin size={14} className="text-emerald-500 flex-shrink-0"/>
-                                <span className="text-xs font-bold text-slate-200 truncate">{chunk.maps.title || "View on Google Maps"}</span>
-                              </div>
-                              <ExternalLink size={14} className="text-slate-500 group-hover:text-white flex-shrink-0"/>
-                            </a>
-                          )
-                        ))}
+                        {mapsGroundingResults.chunks.map(
+                          (chunk: any, i: number) =>
+                            chunk.maps && (
+                              <a
+                                key={i}
+                                href={chunk.maps.uri}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center justify-between p-3 bg-slate-900/50 rounded-xl border border-white/5 hover:border-indigo-500/50 transition-all group"
+                              >
+                                <div className="flex items-center gap-2 truncate">
+                                  <MapPin
+                                    size={14}
+                                    className="text-emerald-500 flex-shrink-0"
+                                  />
+                                  <span className="text-xs font-bold text-slate-200 truncate">
+                                    {chunk.maps.title || "View on Google Maps"}
+                                  </span>
+                                </div>
+                                <ExternalLink
+                                  size={14}
+                                  className="text-slate-500 group-hover:text-white flex-shrink-0"
+                                />
+                              </a>
+                            ),
+                        )}
                       </div>
                     </div>
                   )}
                 </div>
               )}
             </div>
-          ) : activeTab === 'members' ? (
+          ) : activeTab === "members" ? (
             <div className="space-y-4 animate-in fade-in duration-500">
-               {/* Broadcast Location Button */}
-               <button 
-                  onClick={() => handleShareLocation('group')}
-                  className="w-full flex items-center justify-center gap-3 p-4 bg-indigo-600/10 border border-indigo-500/20 text-indigo-400 rounded-[2rem] font-black uppercase text-[10px] tracking-widest hover:bg-indigo-600/20 transition-all active:scale-[0.98] mb-2 shadow-lg shadow-indigo-500/5"
-               >
-                 <Share2 size={16}/> Broadcast Location
-               </button>
+              {/* Broadcast Location Button */}
+              <button
+                onClick={() => handleShareLocation("group")}
+                className="w-full flex items-center justify-center gap-3 p-4 bg-indigo-600/10 border border-indigo-500/20 text-indigo-400 rounded-[2rem] font-black uppercase text-[10px] tracking-widest hover:bg-indigo-600/20 transition-all active:scale-[0.98] mb-2 shadow-lg shadow-indigo-500/5"
+              >
+                <Share2 size={16} /> Broadcast Location
+              </button>
 
-               {/* Member Search Bar */}
-               <div className="flex gap-2 mb-6">
-                 <div className="relative flex-1 group">
-                   <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-slate-500 group-focus-within:text-indigo-400 transition-colors">
-                     <Search size={14} />
-                   </div>
-                   <input 
-                     type="text" 
-                     placeholder="Search members..." 
-                     value={memberSearchQuery}
-                     onChange={(e) => setMemberSearchQuery(e.target.value)}
-                     className="w-full bg-slate-800/50 border border-white/5 rounded-2xl py-3 pl-11 pr-4 text-xs outline-none focus:border-indigo-500/50 focus:bg-slate-800 transition-all placeholder:text-slate-600 font-bold"
-                   />
-                   {memberSearchQuery && (
-                     <button 
-                      onClick={() => setMemberSearchQuery('')}
+              {/* Member Search Bar */}
+              <div className="flex gap-2 mb-6">
+                <div className="relative flex-1 group">
+                  <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-slate-500 group-focus-within:text-indigo-400 transition-colors">
+                    <Search size={14} />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Search members..."
+                    value={memberSearchQuery}
+                    onChange={(e) => setMemberSearchQuery(e.target.value)}
+                    className="w-full bg-slate-800/50 border border-white/5 rounded-2xl py-3 pl-11 pr-4 text-xs outline-none focus:border-indigo-500/50 focus:bg-slate-800 transition-all placeholder:text-slate-600 font-bold"
+                  />
+                  {memberSearchQuery && (
+                    <button
+                      onClick={() => setMemberSearchQuery("")}
                       className="absolute inset-y-0 right-4 flex items-center text-slate-500 hover:text-white transition-colors"
-                     >
-                       <X size={14} />
-                     </button>
-                   )}
-                 </div>
-                 <button 
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+                <button
                   onClick={() => setShowOnlyFavorites(!showOnlyFavorites)}
-                  className={`px-4 rounded-2xl border transition-all flex items-center gap-2 font-black uppercase text-[10px] tracking-widest ${showOnlyFavorites ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20' : 'bg-slate-800/50 border-white/5 text-slate-500 hover:text-slate-300'}`}
-                  title={showOnlyFavorites ? "Showing Favorites" : "Filter Favorites"}
-                 >
-                   <Star size={14} fill={showOnlyFavorites ? "currentColor" : "none"} />
-                   <span className="hidden sm:inline">Favs</span>
-                 </button>
-               </div>
+                  className={`px-4 rounded-2xl border transition-all flex items-center gap-2 font-black uppercase text-[10px] tracking-widest ${showOnlyFavorites ? "bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20" : "bg-slate-800/50 border-white/5 text-slate-500 hover:text-slate-300"}`}
+                  title={
+                    showOnlyFavorites ? "Showing Favorites" : "Filter Favorites"
+                  }
+                >
+                  <Star
+                    size={14}
+                    fill={showOnlyFavorites ? "currentColor" : "none"}
+                  />
+                  <span className="hidden sm:inline">Favs</span>
+                </button>
+              </div>
 
-               <div className="space-y-4">
-                 {members
-                   .filter(m => m.id !== currentUser?.id && m.status !== 'Offline')
-                   .filter(m => !showOnlyFavorites || favoriteMemberIds.includes(m.id))
-                   .filter(m => m.name.toLowerCase().includes(memberSearchQuery.toLowerCase()))
-                   .map(m => (
-                     <div key={m.id} className="p-4 bg-slate-800/30 rounded-3xl border border-white/5 flex flex-col gap-3 relative overflow-hidden group hover:bg-slate-800/50 transition-all">
-                      {favoriteMemberIds.includes(m.id) && <div className="absolute top-0 right-0 w-12 h-12 bg-indigo-600/10 rounded-bl-[2rem] pointer-events-none flex items-center justify-center"><Star size={12} className="text-indigo-400 opacity-30" fill="currentColor"/></div>}
-                     <div className="flex gap-4">
-                       <img src={m.avatar || DEFAULT_AVATAR} className="w-12 h-12 rounded-2xl object-cover shadow-lg"/>
-                       <div className="flex-1">
-                         <div className="flex justify-between items-start">
-                           <h3 className="font-black text-white italic uppercase text-sm">{m.name}</h3>
-                           <div className="flex gap-1">
-                             <button onClick={() => toggleFavorite(m.id)} className={`p-2 transition-colors ${favoriteMemberIds.includes(m.id) ? 'text-indigo-400' : 'text-slate-500 hover:text-indigo-400'}`} title={favoriteMemberIds.includes(m.id) ? "Remove from favorites" : "Add to favorites"}><Star size={16} fill={favoriteMemberIds.includes(m.id) ? "currentColor" : "none"}/></button>
-                             <button onClick={() => handleIndividualShare(m)} className="p-2 text-slate-500 hover:text-emerald-400 transition-colors" title="Share your location"><Share2 size={16}/></button>
-                             <button onClick={() => handleStartDM(m)} className="p-2 text-slate-500 hover:text-indigo-400 transition-colors" title="Send message"><MessageSquare size={16}/></button>
-                           </div>
-                         </div>
-                         <span className="text-[9px] text-emerald-400 mt-1 flex items-center gap-1 font-black uppercase tracking-wider"><Navigation size={8}/> {m.status}</span>
-                       </div>
-                     </div>
-                     
-                     {/* Car Details Section */}
-                     {m.car && (
-                       <div className="pt-2 border-t border-white/5 flex items-center gap-3">
-                         <div className="p-1.5 bg-indigo-500/10 rounded-lg">
-                           <Car size={12} className="text-indigo-400"/>
-                         </div>
-                         <div className="flex-1 min-w-0">
-                           <p className="text-[8px] text-slate-600 font-bold uppercase tracking-widest leading-none mb-0.5">Verified Build</p>
-                           <p className="text-[10px] text-indigo-300 font-black uppercase tracking-tight truncate">{m.car}</p>
-                         </div>
-                       </div>
-                     )}
-                   </div>
-                 ))}
-                 {members
-                   .filter(m => m.id !== currentUser?.id && m.status !== 'Offline')
-                   .filter(m => !showOnlyFavorites || favoriteMemberIds.includes(m.id))
-                   .filter(m => m.name.toLowerCase().includes(memberSearchQuery.toLowerCase()))
-                   .length === 0 && (
-                   <div className="text-center py-10 space-y-2">
-                     <p className="text-slate-600 font-black uppercase text-[10px] tracking-widest">
-                       {memberSearchQuery ? `No members matching "${memberSearchQuery}"` : showOnlyFavorites ? "No favorite members online" : "No other members live"}
-                     </p>
-                     {(memberSearchQuery || showOnlyFavorites) && (
-                       <button 
+              <div className="space-y-4">
+                {members
+                  .filter(
+                    (m) => m.id !== currentUser?.id && m.status !== "Offline",
+                  )
+                  .filter(
+                    (m) =>
+                      !showOnlyFavorites || favoriteMemberIds.includes(m.id),
+                  )
+                  .filter((m) =>
+                    m.name
+                      .toLowerCase()
+                      .includes(memberSearchQuery.toLowerCase()),
+                  )
+                  .map((m) => (
+                    <div
+                      key={m.id}
+                      className="p-4 bg-slate-800/30 rounded-3xl border border-white/5 flex flex-col gap-3 relative overflow-hidden group hover:bg-slate-800/50 transition-all"
+                    >
+                      {favoriteMemberIds.includes(m.id) && (
+                        <div className="absolute top-0 right-0 w-12 h-12 bg-indigo-600/10 rounded-bl-[2rem] pointer-events-none flex items-center justify-center">
+                          <Star
+                            size={12}
+                            className="text-indigo-400 opacity-30"
+                            fill="currentColor"
+                          />
+                        </div>
+                      )}
+                      <div className="flex gap-4">
+                        <img
+                          src={m.avatar || DEFAULT_AVATAR}
+                          className="w-12 h-12 rounded-2xl object-cover shadow-lg"
+                        />
+                        <div className="flex-1">
+                          <div className="flex justify-between items-start">
+                            <h3 className="font-black text-white italic uppercase text-sm">
+                              {m.name}
+                            </h3>
+                            <div className="flex gap-1">
+                              <button
+                                onClick={() => toggleFavorite(m.id)}
+                                className={`p-2 transition-colors ${favoriteMemberIds.includes(m.id) ? "text-indigo-400" : "text-slate-500 hover:text-indigo-400"}`}
+                                title={
+                                  favoriteMemberIds.includes(m.id)
+                                    ? "Remove from favorites"
+                                    : "Add to favorites"
+                                }
+                              >
+                                <Star
+                                  size={16}
+                                  fill={
+                                    favoriteMemberIds.includes(m.id)
+                                      ? "currentColor"
+                                      : "none"
+                                  }
+                                />
+                              </button>
+                              <button
+                                onClick={() => handleIndividualShare(m)}
+                                className="p-2 text-slate-500 hover:text-emerald-400 transition-colors"
+                                title="Share your location"
+                              >
+                                <Share2 size={16} />
+                              </button>
+                              <button
+                                onClick={() => handleStartDM(m)}
+                                className="p-2 text-slate-500 hover:text-indigo-400 transition-colors"
+                                title="Send message"
+                              >
+                                <MessageSquare size={16} />
+                              </button>
+                            </div>
+                          </div>
+                          <span className="text-[9px] text-emerald-400 mt-1 flex items-center gap-1 font-black uppercase tracking-wider">
+                            <Navigation size={8} /> {m.status}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Car Details Section */}
+                      {m.car && (
+                        <div className="pt-2 border-t border-white/5 flex items-center gap-3">
+                          <div className="p-1.5 bg-indigo-500/10 rounded-lg">
+                            <Car size={12} className="text-indigo-400" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[8px] text-slate-600 font-bold uppercase tracking-widest leading-none mb-0.5">
+                              Verified Build
+                            </p>
+                            <p className="text-[10px] text-indigo-300 font-black uppercase tracking-tight truncate">
+                              {m.car}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                {members
+                  .filter(
+                    (m) => m.id !== currentUser?.id && m.status !== "Offline",
+                  )
+                  .filter(
+                    (m) =>
+                      !showOnlyFavorites || favoriteMemberIds.includes(m.id),
+                  )
+                  .filter((m) =>
+                    m.name
+                      .toLowerCase()
+                      .includes(memberSearchQuery.toLowerCase()),
+                  ).length === 0 && (
+                  <div className="text-center py-10 space-y-2">
+                    <p className="text-slate-600 font-black uppercase text-[10px] tracking-widest">
+                      {memberSearchQuery
+                        ? `No members matching "${memberSearchQuery}"`
+                        : showOnlyFavorites
+                          ? "No favorite members online"
+                          : "No other members live"}
+                    </p>
+                    {(memberSearchQuery || showOnlyFavorites) && (
+                      <button
                         onClick={() => {
-                          setMemberSearchQuery('');
+                          setMemberSearchQuery("");
                           setShowOnlyFavorites(false);
                         }}
                         className="text-indigo-400 text-[10px] font-black uppercase tracking-widest hover:underline"
-                       >
-                         Clear Filters
-                       </button>
-                     )}
-                   </div>
-                 )}
-               </div>
+                      >
+                        Clear Filters
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
-          ) : activeTab === 'reminders' ? (
-            <div className="space-y-6 animate-in fade-in duration-300">
-               <div className="flex justify-between items-center">
-                 <h3 className="text-xl font-black text-white italic uppercase tracking-tighter flex items-center gap-2"><Bell size={20} className="text-indigo-500"/> Reminders</h3>
-                 <button onClick={() => setIsAddingReminder(!isAddingReminder)} className={`p-2 rounded-xl transition-all ${isAddingReminder ? 'bg-red-500/10 text-red-400' : 'bg-indigo-600 text-white shadow-lg'}`}>
-                   {isAddingReminder ? <X size={18}/> : <Plus size={18}/>}
-                 </button>
-               </div>
-
-               {isAddingReminder && (
-                 <div className="bg-slate-800/40 border border-white/5 rounded-3xl p-6 space-y-4 animate-in slide-in-from-top duration-300">
-                   <div>
-                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">Event Name</label>
-                     <input 
-                      type="text" 
-                      value={newReminder.title} 
-                      onChange={e => setNewReminder({...newReminder, title: e.target.value})}
-                      placeholder="e.g. Pensacola Pop-up Meet" 
-                      className="w-full bg-slate-900/50 border border-white/5 rounded-xl px-4 py-2 text-sm outline-none focus:border-indigo-500"
-                     />
-                   </div>
-                   <div className="grid grid-cols-2 gap-4">
-                     <div>
-                       <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">Date</label>
-                       <input 
-                        type="date" 
-                        value={newReminder.date}
-                        onChange={e => setNewReminder({...newReminder, date: e.target.value})}
-                        className="w-full bg-slate-900/50 border border-white/5 rounded-xl px-4 py-2 text-sm outline-none focus:border-indigo-500 color-scheme-dark"
-                       />
-                     </div>
-                     <div>
-                       <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">Time</label>
-                       <input 
-                        type="time" 
-                        value={newReminder.time}
-                        onChange={e => setNewReminder({...newReminder, time: e.target.value})}
-                        className="w-full bg-slate-900/50 border border-white/5 rounded-xl px-4 py-2 text-sm outline-none focus:border-indigo-500 color-scheme-dark"
-                       />
-                     </div>
-                   </div>
-                   <div className="grid grid-cols-2 gap-4">
-                     <div>
-                       <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">Type</label>
-                       <select 
-                        value={newReminder.type}
-                        onChange={e => setNewReminder({...newReminder, type: e.target.value as Reminder['type']})}
-                        className="w-full bg-slate-900/50 border border-white/5 rounded-xl px-4 py-2 text-sm outline-none focus:border-indigo-500"
-                       >
-                         <option value="Meetup">Meetup</option>
-                         <option value="Cruise">Cruise</option>
-                         <option value="Show">Show</option>
-                         <option value="Other">Other</option>
-                       </select>
-                     </div>
-                     <div>
-                       <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">Alert</label>
-                       <select 
-                        value={newReminder.alertBefore}
-                        onChange={e => setNewReminder({...newReminder, alertBefore: e.target.value as Reminder['alertBefore']})}
-                        className="w-full bg-slate-900/50 border border-white/5 rounded-xl px-4 py-2 text-sm outline-none focus:border-indigo-500"
-                       >
-                         <option value="none">None</option>
-                         <option value="1h">1h before</option>
-                         <option value="1d">1d before</option>
-                       </select>
-                     </div>
-                   </div>
-                   <button onClick={handleAddReminder} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black uppercase text-[10px] tracking-widest shadow-xl shadow-indigo-500/20">Schedule Event</button>
-                 </div>
-               )}
-
-               <div className="space-y-4">
-                 {reminders.length === 0 ? (
-                    <div className="text-center py-20 opacity-20 flex flex-col items-center gap-4">
-                      <Calendar size={48}/>
-                      <p className="font-black uppercase text-[10px] tracking-widest">No upcoming events scheduled</p>
-                    </div>
-                 ) : (
-                   reminders.map(rem => (
-                     <div key={rem.id} className="p-5 bg-slate-800/30 border border-white/5 rounded-[2rem] group hover:bg-slate-800/50 transition-all">
-                       <div className="flex justify-between items-start mb-4">
-                         <div>
-                            <span className={`text-[8px] font-black uppercase tracking-[0.2em] px-2 py-0.5 rounded-md mb-2 inline-block ${rem.type === 'Meetup' ? 'bg-indigo-500/20 text-indigo-400' : rem.type === 'Cruise' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-700 text-slate-400'}`}>
-                              {rem.type}
-                            </span>
-                            <h4 className="font-black text-white italic uppercase text-sm">{rem.title}</h4>
-                         </div>
-                         <button onClick={() => handleDeleteReminder(rem.id)} className="p-2 text-slate-600 hover:text-red-400 transition-colors">
-                           <Trash2 size={16}/>
-                         </button>
-                       </div>
-                       <div className="flex gap-4">
-                         <div className="flex items-center gap-2 text-slate-400">
-                           <Calendar size={12}/>
-                           <span className="text-[10px] font-bold uppercase">{new Date(rem.date).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-                         </div>
-                         <div className="flex items-center gap-2 text-slate-400">
-                           <Clock size={12}/>
-                           <span className="text-[10px] font-bold uppercase">{rem.time}</span>
-                         </div>
-                       </div>
-                     </div>
-                   ))
-                 )}
-               </div>
-            </div>
-          ) : activeTab === 'spots' ? (
+          ) : activeTab === "reminders" ? (
             <div className="space-y-6 animate-in fade-in duration-300">
               <div className="flex justify-between items-center">
-                <h3 className="text-xl font-black text-white italic uppercase tracking-tighter flex items-center gap-2"><MapPin size={20} className="text-indigo-500"/> Community Spots</h3>
-                <button 
-                  onClick={() => setIsAddingSpot(!isAddingSpot)}
-                  className={`p-2 rounded-lg transition-all ${isAddingSpot ? 'bg-red-500 text-white' : 'bg-indigo-600 text-white'}`}
+                <h3 className="text-xl font-black text-white italic uppercase tracking-tighter flex items-center gap-2">
+                  <Calendar size={20} className="text-indigo-500" /> Events
+                </h3>
+                <button
+                  onClick={() => setIsAddingReminder(!isAddingReminder)}
+                  className={`p-2 rounded-xl transition-all ${isAddingReminder ? "bg-red-500/10 text-red-400" : "bg-indigo-600 text-white shadow-lg"}`}
                 >
-                  {isAddingSpot ? <X size={20}/> : <Plus size={20}/>}
+                  {isAddingReminder ? <X size={18} /> : <Plus size={18} />}
+                </button>
+              </div>
+
+              {isAddingReminder && (
+                <div className="bg-slate-800/40 border border-white/5 rounded-3xl p-6 space-y-4 animate-in slide-in-from-top duration-300">
+                  <div>
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">
+                      Event Name
+                    </label>
+                    <input
+                      type="text"
+                      value={newReminder.title}
+                      onChange={(e) =>
+                        setNewReminder({
+                          ...newReminder,
+                          title: e.target.value,
+                        })
+                      }
+                      placeholder="e.g. Pensacola Pop-up Meet"
+                      className="w-full bg-slate-900/50 border border-white/5 rounded-xl px-4 py-2 text-sm outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">
+                      Location
+                    </label>
+                    <input
+                      type="text"
+                      value={newReminder.locationName}
+                      onChange={(e) =>
+                        setNewReminder({
+                          ...newReminder,
+                          locationName: e.target.value,
+                        })
+                      }
+                      placeholder="e.g. Sonic Drive-In, Downtown"
+                      className="w-full bg-slate-900/50 border border-white/5 rounded-xl px-4 py-2 text-sm outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">
+                        Date
+                      </label>
+                      <input
+                        type="date"
+                        value={newReminder.date}
+                        onChange={(e) =>
+                          setNewReminder({
+                            ...newReminder,
+                            date: e.target.value,
+                          })
+                        }
+                        className="w-full bg-slate-900/50 border border-white/5 rounded-xl px-4 py-2 text-sm outline-none focus:border-indigo-500 color-scheme-dark"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">
+                        Time
+                      </label>
+                      <input
+                        type="time"
+                        value={newReminder.time}
+                        onChange={(e) =>
+                          setNewReminder({
+                            ...newReminder,
+                            time: e.target.value,
+                          })
+                        }
+                        className="w-full bg-slate-900/50 border border-white/5 rounded-xl px-4 py-2 text-sm outline-none focus:border-indigo-500 color-scheme-dark"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">
+                        Type
+                      </label>
+                      <select
+                        value={newReminder.type}
+                        onChange={(e) =>
+                          setNewReminder({
+                            ...newReminder,
+                            type: e.target.value as Reminder["type"],
+                          })
+                        }
+                        className="w-full bg-slate-900/50 border border-white/5 rounded-xl px-4 py-2 text-sm outline-none focus:border-indigo-500"
+                      >
+                        <option value="Meetup">Meetup</option>
+                        <option value="Cruise">Cruise</option>
+                        <option value="Show">Show</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">
+                        Alert
+                      </label>
+                      <select
+                        value={newReminder.alertBefore}
+                        onChange={(e) =>
+                          setNewReminder({
+                            ...newReminder,
+                            alertBefore: e.target
+                              .value as Reminder["alertBefore"],
+                          })
+                        }
+                        className="w-full bg-slate-900/50 border border-white/5 rounded-xl px-4 py-2 text-sm outline-none focus:border-indigo-500"
+                      >
+                        <option value="none">None</option>
+                        <option value="1h">1h before</option>
+                        <option value="1d">1d before</option>
+                      </select>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleAddReminder}
+                    className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black uppercase text-[10px] tracking-widest shadow-xl shadow-indigo-500/20"
+                  >
+                    Schedule Event
+                  </button>
+                </div>
+              )}
+
+              <div className="space-y-4">
+                {reminders.length === 0 ? (
+                  <div className="text-center py-20 opacity-20 flex flex-col items-center gap-4">
+                    <Calendar size={48} />
+                    <p className="font-black uppercase text-[10px] tracking-widest">
+                      No upcoming events scheduled
+                    </p>
+                  </div>
+                ) : (
+                  reminders.map((rem) => (
+                    <div
+                      key={rem.id}
+                      className="p-5 bg-slate-800/30 border border-white/5 rounded-[2rem] group hover:bg-slate-800/50 transition-all"
+                    >
+                      <div className="flex justify-between items-start mb-4">
+                        <div>
+                          <span
+                            className={`text-[8px] font-black uppercase tracking-[0.2em] px-2 py-0.5 rounded-md mb-2 inline-block ${rem.type === "Meetup" ? "bg-indigo-500/20 text-indigo-400" : rem.type === "Cruise" ? "bg-emerald-500/20 text-emerald-400" : "bg-slate-700 text-slate-400"}`}
+                          >
+                            {rem.type}
+                          </span>
+                          <h4 className="font-black text-white italic uppercase text-sm">
+                            {rem.title}
+                          </h4>
+                        </div>
+                        <button
+                          onClick={() => handleDeleteReminder(rem.id)}
+                          className="p-2 text-slate-600 hover:text-red-400 transition-colors"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-4">
+                        <div className="flex items-center gap-2 text-slate-400">
+                          <Calendar size={12} />
+                          <span className="text-[10px] font-bold uppercase">
+                            {new Date(rem.date).toLocaleDateString([], {
+                              month: "short",
+                              day: "numeric",
+                              year: "numeric",
+                            })}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 text-slate-400">
+                          <Clock size={12} />
+                          <span className="text-[10px] font-bold uppercase">
+                            {rem.time}
+                          </span>
+                        </div>
+                        {rem.locationName && (
+                          <div className="flex items-center gap-2 text-indigo-400">
+                            <MapPin size={12} />
+                            <span className="text-[10px] font-bold uppercase">
+                              {rem.locationName}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          ) : activeTab === "spots" ? (
+            <div className="space-y-6 animate-in fade-in duration-300">
+              <div className="flex justify-between items-center">
+                <h3 className="text-xl font-black text-white italic uppercase tracking-tighter flex items-center gap-2">
+                  <MapPin size={20} className="text-indigo-500" /> Community
+                  Spots
+                </h3>
+                <button
+                  onClick={() => setIsAddingSpot(!isAddingSpot)}
+                  className={`p-2 rounded-lg transition-all ${isAddingSpot ? "bg-red-500 text-white" : "bg-indigo-600 text-white"}`}
+                >
+                  {isAddingSpot ? <X size={20} /> : <Plus size={20} />}
                 </button>
               </div>
 
               {isAddingSpot && (
                 <div className="p-5 bg-indigo-500/10 border border-indigo-500/20 rounded-[2rem] space-y-4 animate-in slide-in-from-top-4 duration-300">
                   <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest text-center">
-                    {newSpotForm.location ? "Location Set! Fill in details." : "Tap anywhere on the map to set location"}
+                    {newSpotForm.location
+                      ? "Location Set! Fill in details."
+                      : "Tap anywhere on the map to set location"}
                   </p>
-                  
+
                   <div className="space-y-4">
                     <div>
-                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">Spot Name</label>
-                      <input 
-                        type="text" 
-                        value={newSpotForm.name} 
-                        onChange={e => setNewSpotForm({...newSpotForm, name: e.target.value})}
-                        placeholder="e.g. Sonic Meetup, Shell Gas" 
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">
+                        Spot Name
+                      </label>
+                      <input
+                        type="text"
+                        value={newSpotForm.name}
+                        onChange={(e) =>
+                          setNewSpotForm({
+                            ...newSpotForm,
+                            name: e.target.value,
+                          })
+                        }
+                        placeholder="e.g. Sonic Meetup, Shell Gas"
                         className="w-full bg-slate-900/50 border border-white/5 rounded-xl px-4 py-2 text-sm outline-none focus:border-indigo-500"
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">Type</label>
-                      <select 
-                        value={newSpotForm.type} 
-                        onChange={e => setNewSpotForm({...newSpotForm, type: e.target.value as Spot['type']})}
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">
+                        Type
+                      </label>
+                      <select
+                        value={newSpotForm.type}
+                        onChange={(e) =>
+                          setNewSpotForm({
+                            ...newSpotForm,
+                            type: e.target.value as Spot["type"],
+                          })
+                        }
                         className="w-full bg-slate-900/50 border border-white/5 rounded-xl px-4 py-2 text-sm outline-none focus:border-indigo-500"
                       >
                         <option value="Meetup">Meetup</option>
@@ -1502,16 +2128,23 @@ const App: React.FC = () => {
                       </select>
                     </div>
                     <div>
-                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">Description</label>
-                      <textarea 
-                        value={newSpotForm.description} 
-                        onChange={e => setNewSpotForm({...newSpotForm, description: e.target.value})}
-                        placeholder="What's special about this spot?" 
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">
+                        Description
+                      </label>
+                      <textarea
+                        value={newSpotForm.description}
+                        onChange={(e) =>
+                          setNewSpotForm({
+                            ...newSpotForm,
+                            description: e.target.value,
+                          })
+                        }
+                        placeholder="What's special about this spot?"
                         rows={2}
                         className="w-full bg-slate-900/50 border border-white/5 rounded-xl px-4 py-2 text-sm outline-none focus:border-indigo-500 resize-none"
                       />
                     </div>
-                    <button 
+                    <button
                       disabled={!newSpotForm.name || !newSpotForm.location}
                       onClick={handleSaveSpot}
                       className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-black uppercase text-[10px] tracking-widest shadow-xl shadow-indigo-500/20 transition-all"
@@ -1525,235 +2158,346 @@ const App: React.FC = () => {
               <div className="space-y-4">
                 {spots.length === 0 ? (
                   <div className="text-center py-20 opacity-20 flex flex-col items-center gap-4">
-                    <MapPin size={48}/>
-                    <p className="font-black uppercase text-[10px] tracking-widest">No community spots added yet</p>
+                    <MapPin size={48} />
+                    <p className="font-black uppercase text-[10px] tracking-widest">
+                      No community spots added yet
+                    </p>
                   </div>
                 ) : (
-                  spots.map(spot => (
-                    <div key={spot.id} className="p-5 bg-slate-800/30 border border-white/5 rounded-[2rem] group hover:bg-slate-800/50 transition-all">
+                  spots.map((spot) => (
+                    <div
+                      key={spot.id}
+                      className="p-5 bg-slate-800/30 border border-white/5 rounded-[2rem] group hover:bg-slate-800/50 transition-all"
+                    >
                       <div className="flex justify-between items-start mb-4">
                         <div className="flex items-center gap-3">
-                          <div className={`p-2 rounded-xl ${
-                            spot.type === 'Meetup' ? 'bg-indigo-500/20 text-indigo-400' :
-                            spot.type === 'Fuel' ? 'bg-amber-500/20 text-amber-400' :
-                            spot.type === 'Food' ? 'bg-emerald-500/20 text-emerald-400' :
-                            'bg-sky-500/20 text-sky-400'
-                          }`}>
-                            {spot.type === 'Meetup' ? <Users size={16}/> :
-                             spot.type === 'Fuel' ? <Fuel size={16}/> :
-                             spot.type === 'Food' ? <Utensils size={16}/> :
-                             <Camera size={16}/>}
+                          <div
+                            className={`p-2 rounded-xl ${
+                              spot.type === "Meetup"
+                                ? "bg-indigo-500/20 text-indigo-400"
+                                : spot.type === "Fuel"
+                                  ? "bg-amber-500/20 text-amber-400"
+                                  : spot.type === "Food"
+                                    ? "bg-emerald-500/20 text-emerald-400"
+                                    : "bg-sky-500/20 text-sky-400"
+                            }`}
+                          >
+                            {spot.type === "Meetup" ? (
+                              <Users size={16} />
+                            ) : spot.type === "Fuel" ? (
+                              <Fuel size={16} />
+                            ) : spot.type === "Food" ? (
+                              <Utensils size={16} />
+                            ) : (
+                              <Camera size={16} />
+                            )}
                           </div>
                           <div>
-                            <h4 className="font-black text-white italic uppercase text-sm">{spot.name}</h4>
-                            <span className="text-[8px] text-slate-500 font-black uppercase tracking-widest">{spot.type}</span>
+                            <h4 className="font-black text-white italic uppercase text-sm">
+                              {spot.name}
+                            </h4>
+                            <span className="text-[8px] text-slate-500 font-black uppercase tracking-widest">
+                              {spot.type}
+                            </span>
                           </div>
                         </div>
                         <div className="flex gap-2">
-                          <button 
+                          <button
                             onClick={() => setMapDisplayCenter(spot.location)}
                             className="p-2 text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-colors"
                           >
-                            <Navigation size={16}/>
+                            <Navigation size={16} />
                           </button>
                           {spot.createdBy === currentUser?.id && (
-                            <button 
+                            <button
                               onClick={() => handleDeleteSpot(spot.id)}
                               className="p-2 text-slate-600 hover:text-red-400 transition-colors"
                             >
-                              <Trash2 size={16}/>
+                              <Trash2 size={16} />
                             </button>
                           )}
                         </div>
                       </div>
                       {spot.description && (
-                        <p className="text-[10px] text-slate-400 leading-relaxed mb-3">{spot.description}</p>
+                        <p className="text-[10px] text-slate-400 leading-relaxed mb-3">
+                          {spot.description}
+                        </p>
                       )}
                       <div className="flex items-center gap-2 text-[8px] text-slate-600 font-black uppercase tracking-widest">
-                        <Clock size={10}/> Added {new Date(spot.createdAt || '').toLocaleDateString()}
+                        <Clock size={10} /> Added{" "}
+                        {new Date(spot.createdAt || "").toLocaleDateString()}
                       </div>
                     </div>
                   ))
                 )}
               </div>
             </div>
-          ) : activeTab === 'cruise' ? (
+          ) : activeTab === "cruise" ? (
             <div className="space-y-6 animate-in fade-in duration-300">
-               <h3 className="text-xl font-black text-white italic uppercase tracking-tighter">Cruise Mode</h3>
-               <div className="grid grid-cols-2 gap-4">
-                 <button onClick={cruise.isActive ? handleEndCruise : handleStartCruise} className={`p-4 rounded-2xl border flex flex-col items-center font-black uppercase text-[10px] gap-2 transition-all active:scale-95 ${cruise.isActive ? 'bg-red-500/10 border-red-500/20 text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.1)]' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.1)]'}`}>
-                   <Navigation size={24}/> {cruise.isActive ? 'End Cruise' : 'Start Cruise'}
-                 </button>
-                 <button disabled={!cruise.isActive} onClick={() => setIsAddingWaypoint(!isAddingWaypoint)} className={`p-4 rounded-2xl border flex flex-col items-center font-black uppercase text-[10px] gap-2 transition-all active:scale-95 ${isAddingWaypoint ? 'bg-indigo-600 border-indigo-500 text-white shadow-indigo-500/20 shadow-lg' : 'bg-slate-800 border-white/5 text-slate-400'}`}>
-                    <MapPin size={24}/> {isAddingWaypoint ? 'Click Map' : 'Add Point'}
-                 </button>
-               </div>
+              <h3 className="text-xl font-black text-white italic uppercase tracking-tighter">
+                Cruise Mode
+              </h3>
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  onClick={
+                    cruise.isActive ? handleEndCruise : handleStartCruise
+                  }
+                  className={`p-4 rounded-2xl border flex flex-col items-center font-black uppercase text-[10px] gap-2 transition-all active:scale-95 ${cruise.isActive ? "bg-red-500/10 border-red-500/20 text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.1)]" : "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.1)]"}`}
+                >
+                  <Navigation size={24} />{" "}
+                  {cruise.isActive ? "End Cruise" : "Start Cruise"}
+                </button>
+                <button
+                  disabled={!cruise.isActive}
+                  onClick={() => setIsAddingWaypoint(!isAddingWaypoint)}
+                  className={`p-4 rounded-2xl border flex flex-col items-center font-black uppercase text-[10px] gap-2 transition-all active:scale-95 ${isAddingWaypoint ? "bg-indigo-600 border-indigo-500 text-white shadow-indigo-500/20 shadow-lg" : "bg-slate-800 border-white/5 text-slate-400"}`}
+                >
+                  <MapPin size={24} />{" "}
+                  {isAddingWaypoint ? "Click Map" : "Add Point"}
+                </button>
+              </div>
 
-               {/* Cruise Location Sharing */}
-               {cruise.isActive && (
-                 <button 
-                  onClick={() => handleShareLocation('group')}
+              {/* Cruise Location Sharing */}
+              {cruise.isActive && (
+                <button
+                  onClick={() => handleShareLocation("group")}
                   className="w-full py-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-center justify-center gap-3 text-emerald-400 font-black uppercase text-[10px] tracking-widest hover:bg-emerald-500/20 transition-all"
-                 >
-                   <Share2 size={16}/> Share Cruise Pos to Group
-                 </button>
-               )}
+                >
+                  <Share2 size={16} /> Share Cruise Pos to Group
+                </button>
+              )}
 
-               {cruise.isActive && (
-                 <div className="bg-indigo-500/10 border border-indigo-500/20 p-4 rounded-2xl">
-                    <p className="text-[10px] font-black text-indigo-400 uppercase mb-2">Live Cruise Data</p>
-                    <div className="flex justify-between text-xs font-bold text-slate-300">
-                      <span>Waypoints</span>
-                      <span>{cruise.route.length - 1}</span>
-                    </div>
-                 </div>
-               )}
+              {cruise.isActive && (
+                <div className="bg-indigo-500/10 border border-indigo-500/20 p-4 rounded-2xl">
+                  <p className="text-[10px] font-black text-indigo-400 uppercase mb-2">
+                    Live Cruise Data
+                  </p>
+                  <div className="flex justify-between text-xs font-bold text-slate-300">
+                    <span>Waypoints</span>
+                    <span>{cruise.route.length - 1}</span>
+                  </div>
+                </div>
+              )}
             </div>
-          ) : activeTab === 'chat' ? (
+          ) : activeTab === "chat" ? (
             <div className="flex flex-col h-full space-y-4 animate-in fade-in duration-500 overflow-hidden">
-               <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-                  {conversations.map(c => (
-                    <button 
-                      key={c.id} 
-                      onClick={() => setActiveConversationId(c.id)}
-                      className={`flex-shrink-0 px-4 py-2 rounded-xl border text-[10px] font-black uppercase transition-all ${activeConversationId === c.id ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-800/50 border-white/5 text-slate-500'}`}
-                    >
-                      {c.name}
-                    </button>
-                  ))}
-               </div>
+              <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+                {conversations.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => setActiveConversationId(c.id)}
+                    className={`flex-shrink-0 px-4 py-2 rounded-xl border text-[10px] font-black uppercase transition-all ${activeConversationId === c.id ? "bg-indigo-600 border-indigo-500 text-white shadow-lg" : "bg-slate-800/50 border-white/5 text-slate-500"}`}
+                  >
+                    {c.name}
+                  </button>
+                ))}
+              </div>
 
-               {activeConversationId ? (
-                 <div className="flex-1 flex flex-col bg-slate-800/20 rounded-3xl border border-white/5 p-4 min-h-0 overflow-hidden">
-                    <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2 custom-scrollbar">
-                      {conversations.find(c => c.id === activeConversationId)?.messages.map(msg => (
-                        <div key={msg.id} className={`flex flex-col ${msg.senderId === currentUser?.id ? 'items-end' : 'items-start'}`}>
-                          <div className={`max-w-[85%] p-3 rounded-2xl text-xs font-medium ${msg.senderId === currentUser?.id ? 'bg-indigo-600 text-white rounded-tr-none' : 'bg-slate-700/50 text-slate-200 rounded-tl-none border border-white/5'}`}>
-                            {msg.text.includes('google.com/maps') ? (
+              {activeConversationId ? (
+                <div className="flex-1 flex flex-col bg-slate-800/20 rounded-3xl border border-white/5 p-4 min-h-0 overflow-hidden">
+                  <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2 custom-scrollbar">
+                    {conversations
+                      .find((c) => c.id === activeConversationId)
+                      ?.messages.map((msg) => (
+                        <div
+                          key={msg.id}
+                          className={`flex flex-col ${msg.senderId === currentUser?.id ? "items-end" : "items-start"}`}
+                        >
+                          <div
+                            className={`max-w-[85%] p-3 rounded-2xl text-xs font-medium ${msg.senderId === currentUser?.id ? "bg-indigo-600 text-white rounded-tr-none" : "bg-slate-700/50 text-slate-200 rounded-tl-none border border-white/5"}`}
+                          >
+                            {msg.text.includes("google.com/maps") ? (
                               <div className="space-y-2">
                                 <div className="flex items-center gap-2 mb-1">
-                                  <MapPin size={12}/>
-                                  <span className="font-black uppercase text-[8px] tracking-widest">Shared Location</span>
+                                  <MapPin size={12} />
+                                  <span className="font-black uppercase text-[8px] tracking-widest">
+                                    Shared Location
+                                  </span>
                                 </div>
-                                <p className="leading-tight text-[11px] mb-2">{msg.text.split(': ')[0]}:</p>
-                                <a 
-                                  href={msg.text.split(': ')[1]} 
-                                  target="_blank" 
+                                <p className="leading-tight text-[11px] mb-2">
+                                  {msg.text.split(": ")[0]}:
+                                </p>
+                                <a
+                                  href={msg.text.split(": ")[1]}
+                                  target="_blank"
                                   rel="noopener noreferrer"
-                                  className={`block p-2 rounded-xl border text-center font-bold text-[10px] uppercase transition-all ${msg.senderId === currentUser?.id ? 'bg-white/10 border-white/20 text-white' : 'bg-indigo-600 border-indigo-400 text-white shadow-lg shadow-indigo-500/10'}`}
+                                  className={`block p-2 rounded-xl border text-center font-bold text-[10px] uppercase transition-all ${msg.senderId === currentUser?.id ? "bg-white/10 border-white/20 text-white" : "bg-indigo-600 border-indigo-400 text-white shadow-lg shadow-indigo-500/10"}`}
                                 >
                                   View on Map
                                 </a>
                               </div>
-                            ) : msg.text}
+                            ) : (
+                              msg.text
+                            )}
                           </div>
-                          <span className="text-[8px] text-slate-500 mt-1 font-bold uppercase tracking-wider">{msg.timestamp}</span>
+                          <span className="text-[8px] text-slate-500 mt-1 font-bold uppercase tracking-wider">
+                            {msg.timestamp}
+                          </span>
                         </div>
                       ))}
-                      <div ref={messagesEndRef} />
-                    </div>
-                    <div className="flex gap-2 bg-slate-900/50 p-1 rounded-2xl border border-white/5">
-                      <button onClick={() => activeConversationId && handleShareLocation(activeConversationId)} className="p-2 text-slate-500 hover:text-indigo-400 transition-colors" title="Quick share location">
-                        <MapPin size={18}/>
-                      </button>
-                      <input 
-                        type="text" 
-                        value={messageInput} 
-                        onChange={(e) => setMessageInput(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                        placeholder="Send message..."
-                        className="flex-1 bg-transparent border-none rounded-xl px-4 py-2 text-xs outline-none text-white placeholder:text-slate-600"
-                      />
-                      <button onClick={handleSendMessage} className="p-2 bg-indigo-600 rounded-xl hover:bg-indigo-700 transition-colors shadow-lg">
-                        <Send size={16} className="text-white"/>
-                      </button>
-                    </div>
-                 </div>
-               ) : (
-                 <div className="flex-1 flex flex-col items-center justify-center text-slate-700 opacity-50">
-                    <MessageSquare size={40} className="mb-4"/>
-                    <p className="font-black uppercase text-[10px] tracking-[0.2em]">Select a thread</p>
-                 </div>
-               )}
+                    <div ref={messagesEndRef} />
+                  </div>
+                  <div className="flex gap-2 bg-slate-900/50 p-1 rounded-2xl border border-white/5">
+                    <button
+                      onClick={() =>
+                        activeConversationId &&
+                        handleShareLocation(activeConversationId)
+                      }
+                      className="p-2 text-slate-500 hover:text-indigo-400 transition-colors"
+                      title="Quick share location"
+                    >
+                      <MapPin size={18} />
+                    </button>
+                    <input
+                      type="text"
+                      value={messageInput}
+                      onChange={(e) => setMessageInput(e.target.value)}
+                      onKeyDown={(e) =>
+                        e.key === "Enter" && handleSendMessage()
+                      }
+                      placeholder="Send message..."
+                      className="flex-1 bg-transparent border-none rounded-xl px-4 py-2 text-xs outline-none text-white placeholder:text-slate-600"
+                    />
+                    <button
+                      onClick={handleSendMessage}
+                      className="p-2 bg-indigo-600 rounded-xl hover:bg-indigo-700 transition-colors shadow-lg"
+                    >
+                      <Send size={16} className="text-white" />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex-1 flex flex-col items-center justify-center text-slate-700 opacity-50">
+                  <MessageSquare size={40} className="mb-4" />
+                  <p className="font-black uppercase text-[10px] tracking-[0.2em]">
+                    Select a thread
+                  </p>
+                </div>
+              )}
             </div>
-          ) : activeTab === 'profile' ? (
+          ) : activeTab === "profile" ? (
             <div className="space-y-8 animate-in fade-in duration-300">
               <div>
-                <h3 className="text-xl font-black text-white italic uppercase tracking-tighter mb-6 flex items-center gap-2"><Settings size={20} className="text-indigo-500"/> Edit Profile</h3>
-                
+                <h3 className="text-xl font-black text-white italic uppercase tracking-tighter mb-6 flex items-center gap-2">
+                  <Settings size={20} className="text-indigo-500" /> Edit
+                  Profile
+                </h3>
+
                 <div className="space-y-6">
                   <div className="flex flex-col items-center mb-6">
                     <div className="relative group cursor-pointer">
-                      <img src={profileForm.avatar || DEFAULT_AVATAR} className="w-24 h-24 rounded-3xl object-cover border-4 border-indigo-500 shadow-2xl group-hover:opacity-75 transition-opacity"/>
+                      <img
+                        src={profileForm.avatar || DEFAULT_AVATAR}
+                        className="w-24 h-24 rounded-3xl object-cover border-4 border-indigo-500 shadow-2xl group-hover:opacity-75 transition-opacity"
+                      />
                       <label className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity">
-                        <Plus className="text-white" size={32}/>
-                        <input type="file" accept="image/*" className="hidden" onChange={(e) => handleFileChange(e, 'profile')} />
+                        <Plus className="text-white" size={32} />
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => handleFileChange(e, "profile")}
+                        />
                       </label>
                     </div>
-                    <p className="text-[10px] text-slate-500 font-black uppercase mt-4 tracking-widest">Tap to upload photo</p>
+                    <p className="text-[10px] text-slate-500 font-black uppercase mt-4 tracking-widest">
+                      Tap to upload photo
+                    </p>
                   </div>
 
                   <div className="space-y-4">
                     <div>
-                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">Display Name</label>
-                      <input 
-                        type="text" 
-                        value={profileForm.name} 
-                        onChange={e => setProfileForm({...profileForm, name: e.target.value})}
-                        placeholder="Your Name" 
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">
+                        Display Name
+                      </label>
+                      <input
+                        type="text"
+                        value={profileForm.name}
+                        onChange={(e) =>
+                          setProfileForm({
+                            ...profileForm,
+                            name: e.target.value,
+                          })
+                        }
+                        placeholder="Your Name"
                         className="w-full bg-slate-800/50 border border-white/5 rounded-xl px-4 py-3 text-sm outline-none focus:border-indigo-500 transition-all"
                       />
                     </div>
 
                     <div>
-                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">Vehicle Build</label>
-                      <input 
-                        type="text" 
-                        value={profileForm.car} 
-                        onChange={e => setProfileForm({...profileForm, car: e.target.value})}
-                        placeholder="Year Make Model" 
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">
+                        Vehicle Build
+                      </label>
+                      <input
+                        type="text"
+                        value={profileForm.car}
+                        onChange={(e) =>
+                          setProfileForm({
+                            ...profileForm,
+                            car: e.target.value,
+                          })
+                        }
+                        placeholder="Year Make Model"
                         className="w-full bg-slate-800/50 border border-white/5 rounded-xl px-4 py-3 text-sm outline-none focus:border-indigo-500 transition-all"
                       />
                     </div>
 
-                    <button 
+                    <button
                       onClick={handleUpdateProfile}
                       className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl shadow-indigo-500/20 transition-all active:scale-95 flex items-center justify-center gap-2 mt-4"
                     >
-                      <Save size={16}/> Save Profile Changes
+                      <Save size={16} /> Save Profile Changes
                     </button>
                   </div>
                 </div>
               </div>
             </div>
-          ) : activeTab === 'privacy' ? (
+          ) : activeTab === "privacy" ? (
             <div className="space-y-8 animate-in fade-in duration-300">
               <div>
-                <h3 className="text-xl font-black text-white italic uppercase tracking-tighter mb-6 flex items-center gap-2"><Shield size={20} className="text-indigo-500"/> Privacy Center</h3>
-                
+                <h3 className="text-xl font-black text-white italic uppercase tracking-tighter mb-6 flex items-center gap-2">
+                  <Shield size={20} className="text-indigo-500" /> Privacy
+                  Center
+                </h3>
+
                 <div className="space-y-6">
                   {/* Ghost Mode Toggle */}
                   <div className="p-6 bg-slate-800/30 rounded-3xl border border-white/5 flex flex-col gap-4 group hover:bg-slate-800/50 transition-all shadow-xl">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-4">
-                        <div className={`p-3 rounded-2xl transition-all ${privacy.ghostMode ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'bg-slate-900 text-slate-600'}`}>
-                          <Ghost size={24}/>
+                        <div
+                          className={`p-3 rounded-2xl transition-all ${privacy.ghostMode ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20" : "bg-slate-900 text-slate-600"}`}
+                        >
+                          <Ghost size={24} />
                         </div>
                         <div>
-                          <h4 className="font-black text-white italic uppercase text-sm">Ghost Mode</h4>
-                          <p className="text-[10px] text-slate-500 font-bold uppercase mt-0.5">Vanish from other maps</p>
+                          <h4 className="font-black text-white italic uppercase text-sm">
+                            Ghost Mode
+                          </h4>
+                          <p className="text-[10px] text-slate-500 font-bold uppercase mt-0.5">
+                            Vanish from other maps
+                          </p>
                         </div>
                       </div>
-                      <button 
-                        onClick={() => setPrivacy(prev => ({ ...prev, ghostMode: !prev.ghostMode }))}
-                        className={`w-14 h-7 rounded-full transition-all relative border border-white/5 ${privacy.ghostMode ? 'bg-indigo-600 shadow-indigo-500/20 shadow-lg' : 'bg-slate-900'}`}
+                      <button
+                        onClick={() =>
+                          setPrivacy((prev) => ({
+                            ...prev,
+                            ghostMode: !prev.ghostMode,
+                          }))
+                        }
+                        className={`w-14 h-7 rounded-full transition-all relative border border-white/5 ${privacy.ghostMode ? "bg-indigo-600 shadow-indigo-500/20 shadow-lg" : "bg-slate-900"}`}
                       >
-                        <div className={`absolute top-1 w-5 h-5 rounded-full bg-white transition-all shadow-md ${privacy.ghostMode ? 'left-8' : 'left-1'}`} />
+                        <div
+                          className={`absolute top-1 w-5 h-5 rounded-full bg-white transition-all shadow-md ${privacy.ghostMode ? "left-8" : "left-1"}`}
+                        />
                       </button>
                     </div>
-                    <div className={`text-[10px] leading-relaxed p-3 rounded-xl border transition-all ${privacy.ghostMode ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-300' : 'bg-slate-950 border-white/5 text-slate-600'}`}>
-                      {privacy.ghostMode 
-                        ? "ACTIVE: You are currently hidden from the live map. You can still see others, but your marker is ghosted." 
+                    <div
+                      className={`text-[10px] leading-relaxed p-3 rounded-xl border transition-all ${privacy.ghostMode ? "bg-indigo-500/10 border-indigo-500/20 text-indigo-300" : "bg-slate-950 border-white/5 text-slate-600"}`}
+                    >
+                      {privacy.ghostMode
+                        ? "ACTIVE: You are currently hidden from the live map. You can still see others, but your marker is ghosted."
                         : "DISABLED: Your live location is visible to members based on your visibility settings below."}
                     </div>
                   </div>
@@ -1762,26 +2506,41 @@ const App: React.FC = () => {
                   <div className="p-6 bg-slate-800/30 rounded-3xl border border-white/5 space-y-6 shadow-xl">
                     <div className="flex items-center gap-4">
                       <div className="p-3 rounded-2xl bg-slate-900 text-indigo-400">
-                        <Users size={24}/>
+                        <Users size={24} />
                       </div>
                       <div>
-                        <h4 className="font-black text-white italic uppercase text-sm">Location Reach</h4>
-                        <p className="text-[10px] text-slate-500 font-bold uppercase mt-0.5">Who can track you</p>
+                        <h4 className="font-black text-white italic uppercase text-sm">
+                          Location Reach
+                        </h4>
+                        <p className="text-[10px] text-slate-500 font-bold uppercase mt-0.5">
+                          Who can track you
+                        </p>
                       </div>
                     </div>
-                    
+
                     <div className="space-y-2">
-                      {(['everyone', 'favorites'] as const).map(mode => (
-                        <button 
+                      {(["everyone", "favorites"] as const).map((mode) => (
+                        <button
                           key={mode}
-                          onClick={() => setPrivacy(prev => ({ ...prev, visibility: mode }))}
-                          className={`w-full py-4 rounded-2xl text-[11px] font-black uppercase transition-all flex items-center justify-between px-6 border ${privacy.visibility === mode ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20' : 'bg-slate-900 border-white/5 text-slate-600 hover:text-slate-400'}`}
+                          onClick={() =>
+                            setPrivacy((prev) => ({
+                              ...prev,
+                              visibility: mode,
+                            }))
+                          }
+                          className={`w-full py-4 rounded-2xl text-[11px] font-black uppercase transition-all flex items-center justify-between px-6 border ${privacy.visibility === mode ? "bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20" : "bg-slate-900 border-white/5 text-slate-600 hover:text-slate-400"}`}
                         >
                           <span className="flex items-center gap-2">
-                            {mode === 'everyone' ? <Eye size={16}/> : <ShieldCheck size={16}/>}
+                            {mode === "everyone" ? (
+                              <Eye size={16} />
+                            ) : (
+                              <ShieldCheck size={16} />
+                            )}
                             {mode}
                           </span>
-                          {privacy.visibility === mode && <div className="w-2 h-2 rounded-full bg-white animate-pulse"></div>}
+                          {privacy.visibility === mode && (
+                            <div className="w-2 h-2 rounded-full bg-white animate-pulse"></div>
+                          )}
                         </button>
                       ))}
                     </div>
@@ -1790,12 +2549,14 @@ const App: React.FC = () => {
               </div>
             </div>
           ) : (
-            <p className="text-slate-500 text-center py-20 font-black uppercase tracking-widest text-xs">Accessing {activeTab}...</p>
+            <p className="text-slate-500 text-center py-20 font-black uppercase tracking-widest text-xs">
+              Accessing {activeTab}...
+            </p>
           )}
         </div>
       </div>
-      
-      <div className="flex-1 relative h-full">
+
+      <div className="flex-1 relative h-[55%] md:h-full order-1 md:order-2">
         <style>{`
           .member-popup .leaflet-popup-content-wrapper {
             background: transparent !important;
@@ -1816,35 +2577,64 @@ const App: React.FC = () => {
             z-index: 10 !important;
           }
         `}</style>
-        <MapContainer center={mapDisplayCenter} zoom={13} zoomControl={false} style={{ height: '100%', width: '100%' }}>
-          <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" attribution='&copy; CAR SCENE v2' />
+        <MapContainer
+          center={mapDisplayCenter}
+          zoom={13}
+          zoomControl={false}
+          style={{ height: "100%", width: "100%" }}
+        >
+          <TileLayer
+            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+            attribution="&copy; CAR SCENE v2"
+          />
           <MapViewUpdater center={mapDisplayCenter} />
-          <MapEventsHandler onMapClick={handleMapClick} isAddingWaypoint={isAddingWaypoint} isAddingSpot={isAddingSpot} />
+          <MapEventsHandler
+            onMapClick={handleMapClick}
+            isAddingWaypoint={isAddingWaypoint}
+            isAddingSpot={isAddingSpot}
+          />
           {cruise.isActive && <CruisePolyline route={cruise.route} />}
-          {cruise.isActive && cruise.route.slice(1).map((p, i) => <Marker key={i} position={p} icon={createWaypointIcon(i)}/>)}
-          {spots.map(spot => (
-            <Marker key={spot.id} position={spot.location} icon={createSpotMapIcon(spot.type)}>
+          {cruise.isActive &&
+            cruise.route
+              .slice(1)
+              .map((p, i) => (
+                <Marker key={i} position={p} icon={createWaypointIcon(i)} />
+              ))}
+          {spots.map((spot) => (
+            <Marker
+              key={spot.id}
+              position={spot.location}
+              icon={createSpotMapIcon(spot.type)}
+            >
               <Popup className="member-popup">
                 <div className="min-w-[200px] p-0 bg-slate-900 text-white rounded-2xl overflow-hidden border border-white/10 shadow-2xl">
                   <div className="p-4 bg-slate-800/50 border-b border-white/5">
-                    <h3 className="font-black italic uppercase text-sm text-white">{spot.name}</h3>
-                    <span className="text-[8px] text-indigo-400 font-black uppercase tracking-widest">{spot.type} Spot</span>
+                    <h3 className="font-black italic uppercase text-sm text-white">
+                      {spot.name}
+                    </h3>
+                    <span className="text-[8px] text-indigo-400 font-black uppercase tracking-widest">
+                      {spot.type} Spot
+                    </span>
                   </div>
                   <div className="p-4 space-y-3">
-                    {spot.description && <p className="text-[10px] text-slate-400 leading-relaxed">{spot.description}</p>}
+                    {spot.description && (
+                      <p className="text-[10px] text-slate-400 leading-relaxed">
+                        {spot.description}
+                      </p>
+                    )}
                     <div className="flex gap-2">
-                      <button 
+                      <button
                         onClick={() => setMapDisplayCenter(spot.location)}
                         className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all"
                       >
                         Focus
                       </button>
                       {spot.createdBy === currentUser?.id && (
-                        <button 
+                        <button
                           onClick={() => handleDeleteSpot(spot.id)}
                           className="p-2 bg-red-500/10 text-red-400 rounded-xl hover:bg-red-500/20 transition-all"
                         >
-                          <Trash2 size={14}/>
+                          <Trash2 size={14} />
                         </button>
                       )}
                     </div>
@@ -1854,58 +2644,81 @@ const App: React.FC = () => {
             </Marker>
           ))}
           {isAddingSpot && newSpotForm.location && (
-            <Marker position={newSpotForm.location as [number, number]} icon={createSpotMapIcon(newSpotForm.type as Spot['type'])}>
+            <Marker
+              position={newSpotForm.location as [number, number]}
+              icon={createSpotMapIcon(newSpotForm.type as Spot["type"])}
+            >
               <Popup>
                 <div className="p-2 text-xs font-bold">New Spot Location</div>
               </Popup>
             </Marker>
           )}
           {members
-            .filter(m => m.status !== 'Offline' && m.id !== currentUser?.id)
-            .filter(m => !showOnlyFavorites || favoriteMemberIds.includes(m.id))
-            .map(m => (
-            <Marker key={m.id} position={m.location} icon={createMemberMapIcon(m)}>
-              <Popup className="member-popup">
-                <div className="min-w-[180px] p-0 bg-slate-900 text-white rounded-2xl overflow-hidden border border-white/10 shadow-2xl">
-                  {/* Header with Avatar and Name */}
-                  <div className="flex items-center gap-3 p-3 bg-slate-800/50 border-b border-white/5">
-                    <div className="relative">
-                      <img src={m.avatar || DEFAULT_AVATAR} className="w-10 h-10 rounded-xl object-cover border border-white/10 shadow-lg" />
-                      <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-emerald-500 border-2 border-slate-900 rounded-full shadow-sm"></div>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-black italic uppercase text-xs truncate leading-tight text-white">{m.name}</p>
-                      <span className="text-[8px] text-emerald-400 flex items-center gap-1 font-black uppercase tracking-wider mt-0.5">
-                        <Navigation size={8} className="animate-pulse"/> {m.status}
-                      </span>
-                    </div>
-                  </div>
-                  
-                  {/* Details and Actions */}
-                  <div className="p-3 space-y-2.5">
-                    {m.car && (
-                      <div className="flex items-center gap-2 text-indigo-300 bg-indigo-500/10 px-2.5 py-2 rounded-xl border border-indigo-500/20">
-                        <Car size={12} className="text-indigo-400 shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[7px] text-slate-500 font-bold uppercase tracking-widest leading-none mb-0.5">Verified Build</p>
-                          <p className="text-[9px] font-black uppercase tracking-tight truncate leading-none">{m.car}</p>
-                        </div>
+            .filter((m) => m.status !== "Offline" && m.id !== currentUser?.id)
+            .filter(
+              (m) => !showOnlyFavorites || favoriteMemberIds.includes(m.id),
+            )
+            .map((m) => (
+              <Marker
+                key={m.id}
+                position={m.location}
+                icon={createMemberMapIcon(m)}
+              >
+                <Popup className="member-popup">
+                  <div className="min-w-[180px] p-0 bg-slate-900 text-white rounded-2xl overflow-hidden border border-white/10 shadow-2xl">
+                    {/* Header with Avatar and Name */}
+                    <div className="flex items-center gap-3 p-3 bg-slate-800/50 border-b border-white/5">
+                      <div className="relative">
+                        <img
+                          src={m.avatar || DEFAULT_AVATAR}
+                          className="w-10 h-10 rounded-xl object-cover border border-white/10 shadow-lg"
+                        />
+                        <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-emerald-500 border-2 border-slate-900 rounded-full shadow-sm"></div>
                       </div>
-                    )}
-                    
-                    <button 
-                      onClick={() => handleStartDM(m)}
-                      className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white py-2.5 rounded-xl transition-all text-[9px] font-black uppercase tracking-widest shadow-lg shadow-indigo-600/20 active:scale-95"
-                    >
-                      <MessageSquare size={12} />
-                      Send Message
-                    </button>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-black italic uppercase text-xs truncate leading-tight text-white">
+                          {m.name}
+                        </p>
+                        <span className="text-[8px] text-emerald-400 flex items-center gap-1 font-black uppercase tracking-wider mt-0.5">
+                          <Navigation size={8} className="animate-pulse" />{" "}
+                          {m.status}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Details and Actions */}
+                    <div className="p-3 space-y-2.5">
+                      {m.car && (
+                        <div className="flex items-center gap-2 text-indigo-300 bg-indigo-500/10 px-2.5 py-2 rounded-xl border border-indigo-500/20">
+                          <Car size={12} className="text-indigo-400 shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[7px] text-slate-500 font-bold uppercase tracking-widest leading-none mb-0.5">
+                              Verified Build
+                            </p>
+                            <p className="text-[9px] font-black uppercase tracking-tight truncate leading-none">
+                              {m.car}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      <button
+                        onClick={() => handleStartDM(m)}
+                        className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white py-2.5 rounded-xl transition-all text-[9px] font-black uppercase tracking-widest shadow-lg shadow-indigo-600/20 active:scale-95"
+                      >
+                        <MessageSquare size={12} />
+                        Send Message
+                      </button>
+                    </div>
                   </div>
-                </div>
-              </Popup>
-            </Marker>
-          ))}
-          {currentUser && currentUser.status !== 'Offline' && currentUserLocation && <Marker position={currentUserLocation} icon={userMarkerIcon}/>}
+                </Popup>
+              </Marker>
+            ))}
+          {currentUser &&
+            currentUser.status !== "Offline" &&
+            currentUserLocation && (
+              <Marker position={currentUserLocation} icon={userMarkerIcon} />
+            )}
         </MapContainer>
       </div>
     </div>
