@@ -253,6 +253,7 @@ const App: React.FC = () => {
     | "reminders"
     | "profile"
     | "spots"
+    | "studio"
   >("members");
   const [shareFeedback, setShareFeedback] = useState<string | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
@@ -293,7 +294,27 @@ const App: React.FC = () => {
     locationName: "",
     type: "Meetup",
     alertBefore: "1h",
+    recurring: "none",
+    alertSound: "default",
   });
+
+  // AI Generation States
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [isGeneratingAi, setIsGeneratingAi] = useState(false);
+  const [generatedImage, setGeneratedImage] = useState<string | null>(null);
+  const [generatedVideo, setGeneratedVideo] = useState<string | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [hasApiKey, setHasApiKey] = useState(false);
+
+  useEffect(() => {
+    const checkApiKey = async () => {
+      if (window.aistudio?.hasSelectedApiKey) {
+        const selected = await window.aistudio.hasSelectedApiKey();
+        setHasApiKey(selected);
+      }
+    };
+    checkApiKey();
+  }, []);
 
   useEffect(() => {
     const checkReminders = () => {
@@ -301,7 +322,7 @@ const App: React.FC = () => {
       setReminders((prev) => {
         let changed = false;
         const updated = prev.map((rem) => {
-          if (rem.isCompleted || rem.alertFired || rem.alertBefore === "none")
+          if (rem.isCompleted || (rem.alertFired && rem.recurring === "none") || rem.alertBefore === "none")
             return rem;
 
           const eventTime = new Date(`${rem.date} ${rem.time}`);
@@ -309,16 +330,35 @@ const App: React.FC = () => {
           const diffHours = diffMs / (1000 * 60 * 60);
 
           let shouldAlert = false;
-          if (rem.alertBefore === "1h" && diffHours <= 1 && diffHours > 0)
+          if (rem.alertBefore === "1h" && diffHours <= 1 && diffHours > 0 && !rem.alertFired)
             shouldAlert = true;
-          if (rem.alertBefore === "1d" && diffHours <= 24 && diffHours > 0)
+          if (rem.alertBefore === "1d" && diffHours <= 24 && diffHours > 0 && !rem.alertFired)
             shouldAlert = true;
 
           if (shouldAlert) {
             setActiveNotifications((prevNotif) => [...prevNotif, rem]);
+            playAlertSound(rem.alertSound);
             changed = true;
             return { ...rem, alertFired: true };
           }
+
+          // Handle recurring events reset
+          if (rem.alertFired && diffHours < -1) {
+            let nextDate = new Date(eventTime);
+            if (rem.recurring === "daily") nextDate.setDate(nextDate.getDate() + 1);
+            if (rem.recurring === "weekly") nextDate.setDate(nextDate.getDate() + 7);
+            if (rem.recurring === "monthly") nextDate.setMonth(nextDate.getMonth() + 1);
+
+            if (rem.recurring !== "none") {
+              changed = true;
+              return {
+                ...rem,
+                date: nextDate.toISOString().split("T")[0],
+                alertFired: false,
+              };
+            }
+          }
+
           return rem;
         });
         return changed ? updated : prev;
@@ -1218,6 +1258,19 @@ const App: React.FC = () => {
     }
   };
 
+  const playAlertSound = (soundType?: Reminder["alertSound"]) => {
+    const sounds = {
+      default: "https://actions.google.com/sounds/v1/alarms/beep_short.ogg",
+      engine:
+        "https://actions.google.com/sounds/v1/transportation/car_engine_revving.ogg",
+      turbo:
+        "https://actions.google.com/sounds/v1/transportation/car_turbo_blow_off.ogg",
+      horn: "https://actions.google.com/sounds/v1/transportation/car_horn_honk.ogg",
+    };
+    const audio = new Audio(sounds[soundType || "default"]);
+    audio.play().catch((e) => console.error("Error playing sound:", e));
+  };
+
   const handleAddReminder = () => {
     if (!newReminder.title || !newReminder.date || !newReminder.time) return;
     const reminder: Reminder = {
@@ -1230,6 +1283,8 @@ const App: React.FC = () => {
       alertBefore: (newReminder.alertBefore as Reminder["alertBefore"]) || "1h",
       isCompleted: false,
       alertFired: false,
+      recurring: newReminder.recurring || "none",
+      alertSound: newReminder.alertSound || "default",
     };
     setReminders((prev) =>
       [...prev, reminder].sort(
@@ -1246,7 +1301,79 @@ const App: React.FC = () => {
       locationName: "",
       type: "Meetup",
       alertBefore: "1h",
+      recurring: "none",
+      alertSound: "default",
     });
+  };
+
+  const handleGenerateImage = async () => {
+    if (!aiPrompt.trim()) return;
+    setIsGeneratingAi(true);
+    setAiError(null);
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const response = await ai.models.generateImages({
+        model: "imagen-4.0-generate-001",
+        prompt: aiPrompt,
+        config: {
+          numberOfImages: 1,
+          aspectRatio: "1:1",
+        },
+      });
+
+      if (response.generatedImages?.[0]?.image?.imageBytes) {
+        const imageUrl = `data:image/jpeg;base64,${response.generatedImages[0].image.imageBytes}`;
+        setGeneratedImage(imageUrl);
+      }
+    } catch (error: any) {
+      console.error("Image generation error:", error);
+      setAiError(error.message || "Failed to generate image");
+    } finally {
+      setIsGeneratingAi(false);
+    }
+  };
+
+  const handleGenerateVideo = async () => {
+    if (!aiPrompt.trim()) return;
+    setIsGeneratingAi(true);
+    setAiError(null);
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      let operation = await ai.models.generateVideos({
+        model: "veo-3.1-fast-generate-preview",
+        prompt: aiPrompt,
+        config: {
+          numberOfVideos: 1,
+          resolution: "720p",
+          aspectRatio: "16:9",
+        },
+      });
+
+      while (!operation.done) {
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+        operation = await ai.operations.getVideosOperation({
+          operation: operation,
+        });
+      }
+
+      const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
+      if (downloadLink) {
+        const response = await fetch(downloadLink, {
+          method: "GET",
+          headers: {
+            "x-goog-api-key": process.env.API_KEY!,
+          },
+        });
+        const blob = await response.blob();
+        const videoUrl = URL.createObjectURL(blob);
+        setGeneratedVideo(videoUrl);
+      }
+    } catch (error: any) {
+      console.error("Video generation error:", error);
+      setAiError(error.message || "Failed to generate video");
+    } finally {
+      setIsGeneratingAi(false);
+    }
   };
 
   const handleDeleteReminder = (id: string) => {
@@ -1714,6 +1841,7 @@ const App: React.FC = () => {
               "cruise",
               "reminders",
               "profile",
+              "studio",
             ] as const
           ).map((tab) => (
             <button
@@ -2106,6 +2234,50 @@ const App: React.FC = () => {
                         <option value="none">None</option>
                         <option value="1h">1h before</option>
                         <option value="1d">1d before</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">
+                        Recurring
+                      </label>
+                      <select
+                        value={newReminder.recurring}
+                        onChange={(e) =>
+                          setNewReminder({
+                            ...newReminder,
+                            recurring: e.target
+                              .value as Reminder["recurring"],
+                          })
+                        }
+                        className="w-full bg-slate-900/50 border border-white/5 rounded-xl px-4 py-2 text-sm outline-none focus:border-indigo-500"
+                      >
+                        <option value="none">None</option>
+                        <option value="daily">Daily</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="monthly">Monthly</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">
+                        Alert Sound
+                      </label>
+                      <select
+                        value={newReminder.alertSound}
+                        onChange={(e) =>
+                          setNewReminder({
+                            ...newReminder,
+                            alertSound: e.target
+                              .value as Reminder["alertSound"],
+                          })
+                        }
+                        className="w-full bg-slate-900/50 border border-white/5 rounded-xl px-4 py-2 text-sm outline-none focus:border-indigo-500"
+                      >
+                        <option value="default">Default</option>
+                        <option value="engine">Engine Rev</option>
+                        <option value="turbo">Turbo Blow-off</option>
+                        <option value="horn">Horn Honk</option>
                       </select>
                     </div>
                   </div>
@@ -2561,6 +2733,133 @@ const App: React.FC = () => {
                   <p className="font-black uppercase text-[10px] tracking-[0.2em]">
                     Select a thread
                   </p>
+                </div>
+              )}
+            </div>
+          ) : activeTab === "studio" ? (
+            <div className="space-y-8 animate-in fade-in duration-300">
+              <div className="flex justify-between items-center">
+                <h3 className="text-xl font-black text-white italic uppercase tracking-tighter flex items-center gap-2">
+                  <Eye size={20} className="text-indigo-500" /> AI Studio
+                </h3>
+              </div>
+
+              {!hasApiKey ? (
+                <div className="p-8 bg-indigo-500/10 border border-indigo-500/20 rounded-[2rem] text-center space-y-4">
+                  <ShieldAlert className="mx-auto text-indigo-400" size={48} />
+                  <p className="text-sm font-bold text-slate-300">
+                    AI Studio requires a paid Gemini API key for video and image
+                    generation.
+                  </p>
+                  <button
+                    onClick={() => window.aistudio?.openSelectKey()}
+                    className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-indigo-600/20 transition-all"
+                  >
+                    Select API Key
+                  </button>
+                  <p className="text-[8px] text-slate-500 uppercase tracking-widest">
+                    Visit{" "}
+                    <a
+                      href="https://ai.google.dev/gemini-api/docs/billing"
+                      target="_blank"
+                      className="text-indigo-400 underline"
+                    >
+                      billing documentation
+                    </a>{" "}
+                    for more info.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  <div className="space-y-4">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">
+                      Describe your vision
+                    </label>
+                    <textarea
+                      value={aiPrompt}
+                      onChange={(e) => setAiPrompt(e.target.value)}
+                      placeholder="e.g. A cinematic shot of a modified JDM car drifting through a neon-lit city at night..."
+                      className="w-full bg-slate-800/50 border border-white/5 rounded-2xl p-4 text-sm outline-none focus:border-indigo-500 transition-all min-h-[100px] resize-none"
+                    />
+                    <div className="grid grid-cols-2 gap-4">
+                      <button
+                        onClick={handleGenerateImage}
+                        disabled={isGeneratingAi || !aiPrompt.trim()}
+                        className="py-4 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest border border-white/5 transition-all flex items-center justify-center gap-2"
+                      >
+                        {isGeneratingAi ? (
+                          <Loader2 className="animate-spin" size={16} />
+                        ) : (
+                          <Eye size={16} />
+                        )}
+                        Generate Image
+                      </button>
+                      <button
+                        onClick={handleGenerateVideo}
+                        disabled={isGeneratingAi || !aiPrompt.trim()}
+                        className="py-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-indigo-600/20 transition-all flex items-center justify-center gap-2"
+                      >
+                        {isGeneratingAi ? (
+                          <Loader2 className="animate-spin" size={16} />
+                        ) : (
+                          <Navigation size={16} />
+                        )}
+                        Generate Video
+                      </button>
+                    </div>
+                  </div>
+
+                  {aiError && (
+                    <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-3 text-red-400">
+                      <AlertCircle size={18} />
+                      <p className="text-[10px] font-bold uppercase">
+                        {aiError}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="space-y-6">
+                    {generatedImage && (
+                      <div className="space-y-3">
+                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                          Generated Image
+                        </p>
+                        <div className="relative group rounded-3xl overflow-hidden border border-white/10 shadow-2xl">
+                          <img
+                            src={generatedImage}
+                            className="w-full aspect-square object-cover"
+                          />
+                          <button
+                            onClick={() => {
+                              setProfileForm({
+                                ...profileForm,
+                                avatar: generatedImage,
+                              });
+                              setActiveTab("profile");
+                            }}
+                            className="absolute bottom-4 right-4 px-4 py-2 bg-black/60 backdrop-blur-md text-white rounded-xl text-[8px] font-black uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity border border-white/20"
+                          >
+                            Use as Avatar
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {generatedVideo && (
+                      <div className="space-y-3">
+                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                          Generated Video
+                        </p>
+                        <div className="rounded-3xl overflow-hidden border border-white/10 shadow-2xl bg-black aspect-video">
+                          <video
+                            src={generatedVideo}
+                            controls
+                            className="w-full h-full"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

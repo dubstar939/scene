@@ -1,4 +1,13 @@
 
+declare global {
+  interface Window {
+    aistudio?: {
+      hasSelectedApiKey: () => Promise<boolean>;
+      openSelectKey: () => Promise<void>;
+    };
+  }
+}
+
 export interface Member {
   id: string;
   name: string;
@@ -74,4 +83,6 @@ export interface Reminder {
   alertBefore: 'none' | '1h' | '1d';
   isCompleted: boolean;
   alertFired?: boolean;
+  recurring?: 'none' | 'daily' | 'weekly' | 'monthly';
+  alertSound?: 'default' | 'engine' | 'turbo' | 'horn';
 }
