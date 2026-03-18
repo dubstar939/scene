@@ -17,6 +17,8 @@ export interface Member {
   avatar: string;
   lastSeen: string;
   isFavorite?: boolean;
+  isGhost?: boolean;
+  privacy?: PrivacySettings;
 }
 
 export interface Spot {

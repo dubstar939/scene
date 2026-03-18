@@ -111,8 +111,8 @@ const createMemberMapIcon = (member: Member) => {
       return null;
   }
 
-  iconHtml = `<div class="${size} rounded-full border-2 ${borderColor} shadow-lg flex items-center justify-center transition-all duration-500 ${ring}" style="background-color: ${bgColor};">
-                ${iconComponent}
+  iconHtml = `<div class="${size} rounded-full border-2 ${borderColor} shadow-lg flex items-center justify-center transition-all duration-500 ${ring} ${member.isGhost ? "opacity-40 grayscale scale-90" : ""}" style="background-color: ${bgColor};">
+                ${member.isGhost ? `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 10h.01"/><path d="M15 10h.01"/><path d="M12 2a8 8 0 0 0-8 8v12l3-3 2.5 2.5L12 19l2.5 2.5L17 19l3 3V10a8 8 0 0 0-8-8z"/></svg>` : iconComponent}
               </div>`;
 
   return L.divIcon({
@@ -477,6 +477,34 @@ const App: React.FC = () => {
     }
   }, [isLoggedIn, currentUser]);
 
+  // Send message_read event when active conversation changes
+  useEffect(() => {
+    if (activeConversationId && socketRef.current && currentUser) {
+      socketRef.current.send({
+        type: "broadcast",
+        event: "message_read",
+        payload: {
+          memberId: currentUser.id,
+          conversationId: activeConversationId,
+        },
+      });
+
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === activeConversationId
+            ? {
+                ...c,
+                unreadCount: 0,
+                messages: c.messages.map((m) =>
+                  m.senderId !== currentUser.id ? { ...m, isRead: true } : m,
+                ),
+              }
+            : c,
+        ),
+      );
+    }
+  }, [activeConversationId, currentUser]);
+
   const startLocationWatch = useCallback(
     (memberId: string) => {
       if (locationWatchId.current !== null) {
@@ -502,7 +530,13 @@ const App: React.FC = () => {
             socketRef.current.send({
               type: "broadcast",
               event: "location_update",
-              payload: { memberId, location: newLocation },
+              payload: { 
+                memberId, 
+                location: newLocation,
+                isGhost: privacy.ghostMode,
+                privacy: privacy,
+                allowedViewerIds: (privacy.ghostMode || privacy.visibility === "favorites") ? favoriteMemberIds : null
+              },
             });
           }
 
@@ -546,7 +580,7 @@ const App: React.FC = () => {
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
       );
     },
-    [cruise.leaderId],
+    [cruise.leaderId, privacy],
   );
 
   useEffect(() => {
@@ -633,11 +667,24 @@ const App: React.FC = () => {
           });
         })
         .on("broadcast", { event: "location_update" }, ({ payload }) => {
-          const { memberId, location } = payload;
+          const { memberId, location, isGhost, privacy: senderPrivacy, allowedViewerIds } = payload;
+          
+          // If sender has restricted visibility, check if current user is allowed to see them
+          if (allowedViewerIds && currentUser && !allowedViewerIds.includes(currentUser.id)) {
+            setMembers(prev => prev.filter(m => m.id !== memberId));
+            return;
+          }
+          
           setMembers((prev) =>
             prev.map((m) =>
               m.id === memberId
-                ? { ...m, location, lastSeen: new Date().toLocaleTimeString() }
+                ? { 
+                    ...m, 
+                    location, 
+                    isGhost,
+                    privacy: senderPrivacy,
+                    lastSeen: new Date().toLocaleTimeString() 
+                  }
                 : m,
             ),
           );
@@ -736,6 +783,8 @@ const App: React.FC = () => {
                   avatar,
                   lastSeen: new Date().toLocaleTimeString(),
                   isFavorite: false,
+                  isGhost: privacy.ghostMode,
+                  privacy: privacy,
                 };
                 setCurrentUser(newCurrentUser);
                 setProfileForm({
@@ -757,6 +806,8 @@ const App: React.FC = () => {
                   avatar,
                   lastSeen: new Date().toLocaleTimeString(),
                   isFavorite: false,
+                  isGhost: privacy.ghostMode,
+                  privacy: privacy,
                 };
                 setCurrentUser(newCurrentUser);
                 setProfileForm({
@@ -1147,29 +1198,6 @@ const App: React.FC = () => {
         },
       });
     }, 2000);
-  };
-
-  const markAsRead = (conversationId: string) => {
-    if (!currentUser || !socketRef.current) return;
-    socketRef.current.send({
-      type: "broadcast",
-      event: "message_read",
-      payload: { memberId: currentUser.id, conversationId },
-    });
-
-    setConversations((prev) =>
-      prev.map((c) =>
-        c.id === conversationId
-          ? {
-              ...c,
-              unreadCount: 0,
-              messages: c.messages.map((m) =>
-                m.senderId !== currentUser.id ? { ...m, isRead: true } : m,
-              ),
-            }
-          : c,
-      ),
-    );
   };
 
   const handleShareLocation = (conversationId: string) => {
@@ -2575,7 +2603,6 @@ const App: React.FC = () => {
                     key={c.id}
                     onClick={() => {
                       setActiveConversationId(c.id);
-                      markAsRead(c.id);
                     }}
                     className={`flex-shrink-0 px-4 py-2 rounded-xl border text-[10px] font-black uppercase transition-all relative ${activeConversationId === c.id ? "bg-indigo-600 border-indigo-500 text-white shadow-lg" : "bg-slate-800/50 border-white/5 text-slate-500"}`}
                   >
@@ -3192,9 +3219,19 @@ const App: React.FC = () => {
           )}
           {members
             .filter((m) => m.status !== "Offline" && m.id !== currentUser?.id)
-            .filter(
-              (m) => !showOnlyFavorites || favoriteMemberIds.includes(m.id),
-            )
+            .filter((m) => {
+              if (m.id === currentUser?.id) return true;
+              
+              const isFavorite = favoriteMemberIds.includes(m.id);
+              
+              // Ghost Mode: Hide from non-favorites
+              if (m.isGhost && !isFavorite) return false;
+              
+              // Visibility: Favorites only
+              if (m.privacy?.visibility === "favorites" && !isFavorite) return false;
+              
+              return !showOnlyFavorites || isFavorite;
+            })
             .map((m) => (
               <Marker
                 key={m.id}
