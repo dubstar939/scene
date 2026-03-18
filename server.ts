@@ -14,6 +14,17 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Supabase Setup
+/*
+SQL to create the users table:
+create table users (
+  id uuid primary key default uuid_generate_v4(),
+  email text unique not null,
+  password text not null,
+  name text not null,
+  avatar text,
+  car text
+);
+*/
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_ANON_KEY;
 const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey) : null;
@@ -66,10 +77,10 @@ async function startServer() {
             name: user.name,
             avatar: user.avatar,
             car: user.car
-          });
+          }, { onConflict: 'email' });
         if (error) throw error;
-      } catch (err) {
-        console.error("Supabase save error:", err);
+      } catch (err: any) {
+        console.error("Supabase save error:", err.message || err.details || err);
       }
     }
 
@@ -100,8 +111,8 @@ async function startServer() {
           registeredUsers.set(email, data); // Cache it
           return data;
         }
-      } catch (err) {
-        console.error("Supabase fetch error:", err);
+      } catch (err: any) {
+        console.error("Supabase fetch error:", err.message || err.details || err);
       }
     }
     return null;
@@ -141,7 +152,7 @@ async function startServer() {
     try {
       const hashedPassword = await bcrypt.hash(password, 10);
       const newUser = {
-        id: `email-${Date.now()}`,
+        id: crypto.randomUUID(),
         email,
         password: hashedPassword,
         name,
