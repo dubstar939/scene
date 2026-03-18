@@ -377,6 +377,18 @@ const App: React.FC = () => {
   // Discover/Search States
   const [discoverSearchQuery, setDiscoverSearchQuery] = useState("");
   const [memberSearchQuery, setMemberSearchQuery] = useState("");
+  const [memberStatusFilter, setMemberStatusFilter] = useState("All");
+  const [memberCarFilter, setMemberCarFilter] = useState("All");
+
+  const uniqueStatuses = useMemo(() => {
+    const statuses = new Set(members.map((m) => m.status).filter(Boolean));
+    return ["All", ...Array.from(statuses)];
+  }, [members]);
+
+  const uniqueCars = useMemo(() => {
+    const cars = new Set(members.map((m) => m.car).filter(Boolean));
+    return ["All", ...Array.from(cars)];
+  }, [members]);
   const [isSearchingMaps, setIsSearchingMaps] = useState(false);
   const [mapsGroundingResults, setMapsGroundingResults] = useState<{
     text: string;
@@ -1970,40 +1982,75 @@ const App: React.FC = () => {
               </button>
 
               {/* Member Search Bar */}
-              <div className="flex gap-2 mb-6">
-                <div className="relative flex-1 group">
-                  <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-slate-500 group-focus-within:text-indigo-400 transition-colors">
-                    <Search size={14} />
+              <div className="space-y-3 mb-6">
+                <div className="flex gap-2">
+                  <div className="relative flex-1 group">
+                    <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-slate-500 group-focus-within:text-indigo-400 transition-colors">
+                      <Search size={14} />
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="Search members..."
+                      value={memberSearchQuery}
+                      onChange={(e) => setMemberSearchQuery(e.target.value)}
+                      className="w-full bg-slate-800/50 border border-white/5 rounded-2xl py-3 pl-11 pr-4 text-xs outline-none focus:border-indigo-500/50 focus:bg-slate-800 transition-all placeholder:text-slate-600 font-bold"
+                    />
+                    {memberSearchQuery && (
+                      <button
+                        onClick={() => setMemberSearchQuery("")}
+                        className="absolute inset-y-0 right-4 flex items-center text-slate-500 hover:text-white transition-colors"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
                   </div>
-                  <input
-                    type="text"
-                    placeholder="Search members..."
-                    value={memberSearchQuery}
-                    onChange={(e) => setMemberSearchQuery(e.target.value)}
-                    className="w-full bg-slate-800/50 border border-white/5 rounded-2xl py-3 pl-11 pr-4 text-xs outline-none focus:border-indigo-500/50 focus:bg-slate-800 transition-all placeholder:text-slate-600 font-bold"
-                  />
-                  {memberSearchQuery && (
-                    <button
-                      onClick={() => setMemberSearchQuery("")}
-                      className="absolute inset-y-0 right-4 flex items-center text-slate-500 hover:text-white transition-colors"
-                    >
-                      <X size={14} />
-                    </button>
-                  )}
+                  <button
+                    onClick={() => setShowOnlyFavorites(!showOnlyFavorites)}
+                    className={`px-4 rounded-2xl border transition-all flex items-center gap-2 font-black uppercase text-[10px] tracking-widest ${showOnlyFavorites ? "bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20" : "bg-slate-800/50 border-white/5 text-slate-500 hover:text-slate-300"}`}
+                    title={
+                      showOnlyFavorites
+                        ? "Showing Favorites"
+                        : "Filter Favorites"
+                    }
+                  >
+                    <Star
+                      size={14}
+                      fill={showOnlyFavorites ? "currentColor" : "none"}
+                    />
+                    <span className="hidden sm:inline">Favs</span>
+                  </button>
                 </div>
-                <button
-                  onClick={() => setShowOnlyFavorites(!showOnlyFavorites)}
-                  className={`px-4 rounded-2xl border transition-all flex items-center gap-2 font-black uppercase text-[10px] tracking-widest ${showOnlyFavorites ? "bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20" : "bg-slate-800/50 border-white/5 text-slate-500 hover:text-slate-300"}`}
-                  title={
-                    showOnlyFavorites ? "Showing Favorites" : "Filter Favorites"
-                  }
-                >
-                  <Star
-                    size={14}
-                    fill={showOnlyFavorites ? "currentColor" : "none"}
-                  />
-                  <span className="hidden sm:inline">Favs</span>
-                </button>
+
+                <div className="flex gap-2">
+                  <select
+                    value={memberStatusFilter}
+                    onChange={(e) => setMemberStatusFilter(e.target.value)}
+                    className="flex-1 bg-slate-800/50 border border-white/5 rounded-xl py-2 px-3 text-[10px] font-black uppercase tracking-widest text-slate-400 outline-none focus:border-indigo-500/50 transition-all"
+                  >
+                    <option value="All">Status: All</option>
+                    {uniqueStatuses
+                      .filter((s) => s !== "All")
+                      .map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                  </select>
+                  <select
+                    value={memberCarFilter}
+                    onChange={(e) => setMemberCarFilter(e.target.value)}
+                    className="flex-1 bg-slate-800/50 border border-white/5 rounded-xl py-2 px-3 text-[10px] font-black uppercase tracking-widest text-slate-400 outline-none focus:border-indigo-500/50 transition-all"
+                  >
+                    <option value="All">Car: All</option>
+                    {uniqueCars
+                      .filter((c) => c !== "All")
+                      .map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                  </select>
+                </div>
               </div>
 
               <div className="space-y-4">
@@ -2014,6 +2061,15 @@ const App: React.FC = () => {
                   .filter(
                     (m) =>
                       !showOnlyFavorites || favoriteMemberIds.includes(m.id),
+                  )
+                  .filter(
+                    (m) =>
+                      memberStatusFilter === "All" ||
+                      m.status === memberStatusFilter,
+                  )
+                  .filter(
+                    (m) =>
+                      memberCarFilter === "All" || m.car === memberCarFilter,
                   )
                   .filter((m) =>
                     m.name
@@ -3139,6 +3195,9 @@ const App: React.FC = () => {
           center={mapDisplayCenter}
           zoom={13}
           zoomControl={false}
+          dragging={true}
+          scrollWheelZoom={true}
+          doubleClickZoom={true}
           style={{ height: "100%", width: "100%" }}
         >
           <TileLayer
