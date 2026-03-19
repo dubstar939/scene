@@ -8,10 +8,21 @@ declare global {
   }
 }
 
+export interface Achievement {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+  unlockedAt?: string;
+  type: 'distance' | 'photo' | 'checkpoint' | 'chat';
+  requirement: number;
+  progress: number;
+}
+
 export interface Member {
   id: string;
   name: string;
-  car?: string; // Made optional for guests/non-Facebook users
+  car?: string;
   location: [number, number];
   status: 'Cruising' | 'Parked' | 'Heading to meet' | 'At Meetup' | 'On Detour' | 'Offline';
   avatar: string;
@@ -19,6 +30,12 @@ export interface Member {
   isFavorite?: boolean;
   isGhost?: boolean;
   privacy?: PrivacySettings;
+  xp: number;
+  level: number;
+  totalDistance: number; // in meters
+  achievements: Achievement[];
+  photosShared: number;
+  checkpointsVisited: string[];
 }
 
 export interface Spot {

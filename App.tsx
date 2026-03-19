@@ -61,6 +61,8 @@ import {
   Fuel,
   Utensils,
   Camera,
+  Trophy,
+  BarChart3,
 } from "lucide-react";
 import {
   Member,
@@ -70,6 +72,7 @@ import {
   Message,
   Cruise,
   Reminder,
+  Achievement,
 } from "./types";
 import { GoogleGenAI } from "@google/genai";
 import { supabase } from "./src/lib/supabase";
@@ -165,6 +168,74 @@ const createWaypointIcon = (index: number) =>
 const DEFAULT_CENTER: [number, number] = [30.4213, -87.2169]; // Pensacola, FL
 const DEFAULT_AVATAR = "https://placehold.co/150x150/1e293b/FFFFFF?text=?";
 
+const INITIAL_ACHIEVEMENTS: Achievement[] = [
+  {
+    id: "dist_1",
+    title: "Rookie Cruiser",
+    description: "Cruise for 10km",
+    icon: "🚗",
+    type: "distance",
+    requirement: 10000,
+    progress: 0,
+  },
+  {
+    id: "dist_2",
+    title: "Road Warrior",
+    description: "Cruise for 50km",
+    icon: "🛣️",
+    type: "distance",
+    requirement: 50000,
+    progress: 0,
+  },
+  {
+    id: "photo_1",
+    title: "Paparazzi",
+    description: "Share a photo of your ride",
+    icon: "📸",
+    type: "photo",
+    requirement: 1,
+    progress: 0,
+  },
+  {
+    id: "chat_1",
+    title: "Helper",
+    description: "Help others in chat",
+    icon: "💬",
+    type: "chat",
+    requirement: 5,
+    progress: 0,
+  },
+  {
+    id: "check_1",
+    title: "Explorer",
+    description: "Visit 3 scenic spots",
+    icon: "🗺️",
+    type: "checkpoint",
+    requirement: 3,
+    progress: 0,
+  },
+];
+
+const calculateDistance = (
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+) => {
+  const R = 6371e3; // metres
+  const φ1 = (lat1 * Math.PI) / 180;
+  const φ2 = (lat2 * Math.PI) / 180;
+  const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+  const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+
+  const a =
+    Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+    Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return R * c; // in metres
+};
+
 const MapViewUpdater = ({ center }: { center: [number, number] }) => {
   const map = useMap();
   useEffect(() => {
@@ -254,6 +325,8 @@ const App: React.FC = () => {
     | "profile"
     | "spots"
     | "studio"
+    | "leaderboard"
+    | "achievements"
   >("members");
   const [shareFeedback, setShareFeedback] = useState<string | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
@@ -286,6 +359,100 @@ const App: React.FC = () => {
     const saved = localStorage.getItem("scene_reminders");
     return saved ? JSON.parse(saved) : [];
   });
+
+  // Sync current user to members list for leaderboard
+  useEffect(() => {
+    if (currentUser) {
+      setMembers((prev) =>
+        prev.map((m) => (m.id === currentUser.id ? currentUser : m)),
+      );
+    }
+  }, [currentUser]);
+
+  const updateAchievements = (
+    type: Achievement["type"],
+    amount: number = 1,
+    memberId?: string,
+  ) => {
+    const targetId = memberId || currentUser?.id;
+    if (!targetId) return;
+
+    setCurrentUser((prev) => {
+      if (!prev || prev.id !== targetId) return prev;
+
+      let xpGained = 0;
+      let achievementUnlocked = false;
+
+      const updatedAchievements = prev.achievements.map((ach) => {
+        if (ach.type === type && !ach.unlockedAt) {
+          const newProgress =
+            type === "distance" ? prev.totalDistance : ach.progress + amount;
+          if (newProgress >= ach.requirement) {
+            xpGained += 500;
+            achievementUnlocked = true;
+            return {
+              ...ach,
+              progress: ach.requirement,
+              unlockedAt: new Date().toISOString(),
+            };
+          }
+          return { ...ach, progress: newProgress };
+        }
+        return ach;
+      });
+
+      if (!achievementUnlocked && amount === 0 && type !== "distance")
+        return prev;
+
+      const newXp = prev.xp + xpGained;
+      const newLevel = Math.floor(newXp / 1000) + 1;
+
+      const updatedUser = {
+        ...prev,
+        achievements: updatedAchievements,
+        xp: newXp,
+        level: newLevel,
+      };
+
+      localStorage.setItem(
+        `scene_user_data_${prev.id}`,
+        JSON.stringify({
+          xp: updatedUser.xp,
+          level: updatedUser.level,
+          totalDistance: updatedUser.totalDistance,
+          achievements: updatedUser.achievements,
+          photosShared: updatedUser.photosShared,
+          checkpointsVisited: updatedUser.checkpointsVisited,
+        }),
+      );
+
+      return updatedUser;
+    });
+  };
+
+  const addXp = (amount: number) => {
+    if (!currentUser) return;
+    setCurrentUser((prev) => {
+      if (!prev) return null;
+      const newXp = prev.xp + amount;
+      const newLevel = Math.floor(newXp / 1000) + 1;
+      const updatedUser = { ...prev, xp: newXp, level: newLevel };
+
+      localStorage.setItem(
+        `scene_user_data_${prev.id}`,
+        JSON.stringify({
+          xp: updatedUser.xp,
+          level: updatedUser.level,
+          totalDistance: updatedUser.totalDistance,
+          achievements: updatedUser.achievements,
+          photosShared: updatedUser.photosShared,
+          checkpointsVisited: updatedUser.checkpointsVisited,
+        }),
+      );
+
+      return updatedUser;
+    });
+  };
   const [isAddingReminder, setIsAddingReminder] = useState(false);
   const [newReminder, setNewReminder] = useState<Partial<Reminder>>({
     title: "",
@@ -450,6 +617,7 @@ const App: React.FC = () => {
     route: [],
   });
   const locationWatchId = useRef<number | null>(null);
+  const lastLocationRef = useRef<[number, number] | null>(null);
   const socketRef = useRef<RealtimeChannel | null>(null);
   const [isAddingWaypoint, setIsAddingWaypoint] = useState(false);
 
@@ -536,6 +704,99 @@ const App: React.FC = () => {
           ];
           setCurrentUserLocation(newLocation);
           setLocationError(null);
+
+          // Update distance and checkpoints
+          setCurrentUser((prev) => {
+            if (!prev) return null;
+
+            let dist = 0;
+            if (lastLocationRef.current) {
+              dist = calculateDistance(
+                lastLocationRef.current[0],
+                lastLocationRef.current[1],
+                newLocation[0],
+                newLocation[1],
+              );
+            }
+            lastLocationRef.current = newLocation;
+
+            const newTotalDistance = prev.totalDistance + dist;
+
+            // Check for checkpoints (spots)
+            const newlyVisitedCheckpoints = [...prev.checkpointsVisited];
+            let checkpointGained = false;
+            spots.forEach((spot) => {
+              if (!newlyVisitedCheckpoints.includes(spot.id)) {
+                const distToSpot = calculateDistance(
+                  newLocation[0],
+                  newLocation[1],
+                  spot.location[0],
+                  spot.location[1],
+                );
+                if (distToSpot < 100) {
+                  // within 100m
+                  newlyVisitedCheckpoints.push(spot.id);
+                  checkpointGained = true;
+                }
+              }
+            });
+
+            const updatedUser = {
+              ...prev,
+              location: newLocation,
+              totalDistance: newTotalDistance,
+              checkpointsVisited: newlyVisitedCheckpoints,
+            };
+
+            // Achievement checks for distance
+            const updatedAchievements = updatedUser.achievements.map((ach) => {
+              if (ach.type === "distance" && !ach.unlockedAt) {
+                if (newTotalDistance >= ach.requirement) {
+                  return {
+                    ...ach,
+                    progress: ach.requirement,
+                    unlockedAt: new Date().toISOString(),
+                  };
+                }
+                return { ...ach, progress: newTotalDistance };
+              }
+              if (
+                ach.type === "checkpoint" &&
+                !ach.unlockedAt &&
+                checkpointGained
+              ) {
+                const newProgress = newlyVisitedCheckpoints.length;
+                if (newProgress >= ach.requirement) {
+                  return {
+                    ...ach,
+                    progress: ach.requirement,
+                    unlockedAt: new Date().toISOString(),
+                  };
+                }
+                return { ...ach, progress: newProgress };
+              }
+              return ach;
+            });
+
+            const finalUser = {
+              ...updatedUser,
+              achievements: updatedAchievements,
+            };
+
+            localStorage.setItem(
+              `scene_user_data_${prev.id}`,
+              JSON.stringify({
+                xp: finalUser.xp,
+                level: finalUser.level,
+                totalDistance: finalUser.totalDistance,
+                achievements: finalUser.achievements,
+                photosShared: finalUser.photosShared,
+                checkpointsVisited: finalUser.checkpointsVisited,
+              }),
+            );
+
+            return finalUser;
+          });
 
           // Emit to server
           if (socketRef.current) {
@@ -786,6 +1047,9 @@ const App: React.FC = () => {
                 setCurrentUserLocation(initialLocation);
                 setMapDisplayCenter(initialLocation);
 
+                const savedData = localStorage.getItem(`scene_user_data_${id}`);
+                const parsedData = savedData ? JSON.parse(savedData) : null;
+
                 const newCurrentUser: Member = {
                   id,
                   name,
@@ -797,6 +1061,12 @@ const App: React.FC = () => {
                   isFavorite: false,
                   isGhost: privacy.ghostMode,
                   privacy: privacy,
+                  xp: parsedData?.xp || 0,
+                  level: parsedData?.level || 1,
+                  totalDistance: parsedData?.totalDistance || 0,
+                  achievements: parsedData?.achievements || INITIAL_ACHIEVEMENTS,
+                  photosShared: parsedData?.photosShared || 0,
+                  checkpointsVisited: parsedData?.checkpointsVisited || [],
                 };
                 setCurrentUser(newCurrentUser);
                 setProfileForm({
@@ -809,6 +1079,9 @@ const App: React.FC = () => {
                 startLocationWatch(newCurrentUser.id);
               },
               async () => {
+                const savedData = localStorage.getItem(`scene_user_data_${id}`);
+                const parsedData = savedData ? JSON.parse(savedData) : null;
+
                 const newCurrentUser: Member = {
                   id,
                   name,
@@ -820,6 +1093,12 @@ const App: React.FC = () => {
                   isFavorite: false,
                   isGhost: privacy.ghostMode,
                   privacy: privacy,
+                  xp: parsedData?.xp || 0,
+                  level: parsedData?.level || 1,
+                  totalDistance: parsedData?.totalDistance || 0,
+                  achievements: parsedData?.achievements || INITIAL_ACHIEVEMENTS,
+                  photosShared: parsedData?.photosShared || 0,
+                  checkpointsVisited: parsedData?.checkpointsVisited || [],
                 };
                 setCurrentUser(newCurrentUser);
                 setProfileForm({
@@ -1178,6 +1457,17 @@ const App: React.FC = () => {
     );
     setMessageInput("");
     setIsTyping(false);
+
+    // Award XP for participating in chat
+    const helpfulKeywords = ["help", "how to", "where", "info", "meet", "location", "spot"];
+    const isHelpful = helpfulKeywords.some(keyword => newMessage.text.toLowerCase().includes(keyword));
+    
+    if (isHelpful) {
+      updateAchievements("chat", 1);
+      addXp(25); // Bonus XP for being helpful
+    } else {
+      addXp(5); // Base XP for chatting
+    }
   };
 
   const handleTyping = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1247,6 +1537,14 @@ const App: React.FC = () => {
     if (!currentUser) return;
     handleStartDM(member);
     handleShareLocation(member.id);
+  };
+
+  const handleSharePhoto = (photoUrl: string) => {
+    if (!currentUser) return;
+    updateAchievements("photo", 1);
+    addXp(100);
+    setShareFeedback("Photo shared! +100 XP");
+    setTimeout(() => setShareFeedback(null), 3000);
   };
 
   const handleUpdateProfile = () => {
@@ -1867,6 +2165,18 @@ const App: React.FC = () => {
                   ))}
                 </select>
               </div>
+              <div className="text-right flex flex-col items-end gap-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-black text-white italic">LVL {currentUser.level || 1}</span>
+                  <div className="w-12 h-1 bg-slate-900 rounded-full overflow-hidden border border-white/5">
+                    <div 
+                      className="h-full bg-indigo-500 transition-all duration-500"
+                      style={{ width: `${(currentUser.xp % 1000) / 10}%` }}
+                    />
+                  </div>
+                </div>
+                <span className="text-[8px] font-bold text-slate-500 uppercase tracking-widest">{currentUser.xp || 0} XP</span>
+              </div>
             </div>
           )}
         </div>
@@ -1880,6 +2190,8 @@ const App: React.FC = () => {
               "spots",
               "cruise",
               "reminders",
+              "leaderboard",
+              "achievements",
               "profile",
               "studio",
             ] as const
@@ -1898,10 +2210,30 @@ const App: React.FC = () => {
           {activeTab === "discover" ? (
             <div className="space-y-6 animate-in fade-in duration-300">
               <div className="pt-2">
-                <h3 className="text-xl font-black text-white italic uppercase tracking-tighter mb-4 flex items-center gap-2">
-                  <MapPin size={20} className="text-indigo-500" /> Discover
-                  Places
-                </h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xl font-black text-white italic uppercase tracking-tighter flex items-center gap-2">
+                    <MapPin size={20} className="text-indigo-500" /> Discover Places
+                  </h3>
+                  <label className="p-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl cursor-pointer transition-all shadow-lg shadow-indigo-500/20 active:scale-95 flex items-center gap-2">
+                    <Camera size={18} />
+                    <span className="text-[10px] font-black uppercase tracking-widest hidden sm:inline">Share Ride</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onloadend = () => {
+                            handleSharePhoto(reader.result as string);
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
                 <div className="flex gap-2">
                   <input
                     type="text"
@@ -2100,9 +2432,13 @@ const App: React.FC = () => {
                             <h3 className="font-black text-white italic uppercase text-sm">
                               {m.name}
                             </h3>
-                            <div className="flex gap-1">
-                              <button
-                                onClick={() => toggleFavorite(m.id)}
+                            <div className="flex items-center gap-2">
+                              <span className="text-[8px] font-black text-indigo-400 uppercase tracking-widest bg-indigo-500/10 px-2 py-0.5 rounded-full border border-indigo-500/20">
+                                LVL {m.level || 1}
+                              </span>
+                              <div className="flex gap-1">
+                                <button
+                                  onClick={() => toggleFavorite(m.id)}
                                 className={`p-2 transition-colors ${favoriteMemberIds.includes(m.id) ? "text-indigo-400" : "text-slate-500 hover:text-indigo-400"}`}
                                 title={
                                   favoriteMemberIds.includes(m.id)
@@ -2135,7 +2471,8 @@ const App: React.FC = () => {
                               </button>
                             </div>
                           </div>
-                          <span className="text-[9px] text-emerald-400 mt-1 flex items-center gap-1 font-black uppercase tracking-wider">
+                        </div>
+                        <span className="text-[9px] text-emerald-400 mt-1 flex items-center gap-1 font-black uppercase tracking-wider">
                             <Navigation size={8} /> {m.status}
                           </span>
                         </div>
@@ -2945,6 +3282,122 @@ const App: React.FC = () => {
                   </div>
                 </div>
               )}
+            </div>
+          ) : activeTab === "leaderboard" ? (
+            <div className="space-y-6 animate-in fade-in duration-300">
+              <div className="pt-2">
+                <h3 className="text-xl font-black text-white italic uppercase tracking-tighter mb-6 flex items-center gap-2">
+                  <BarChart3 size={20} className="text-indigo-500" /> Leaderboard
+                </h3>
+
+                <div className="space-y-3">
+                  {members
+                    .sort((a, b) => (b.xp || 0) - (a.xp || 0))
+                    .map((member, index) => (
+                      <div
+                        key={member.id}
+                        className={`p-4 rounded-2xl border transition-all flex items-center gap-4 ${
+                          member.id === currentUser?.id
+                            ? "bg-indigo-600/20 border-indigo-500 shadow-lg shadow-indigo-500/10"
+                            : "bg-slate-800/30 border-white/5 hover:bg-slate-800/50"
+                        }`}
+                      >
+                        <div className="w-8 flex justify-center">
+                          {index === 0 ? (
+                            <Trophy size={20} className="text-yellow-400" />
+                          ) : index === 1 ? (
+                            <Trophy size={20} className="text-slate-300" />
+                          ) : index === 2 ? (
+                            <Trophy size={20} className="text-amber-600" />
+                          ) : (
+                            <span className="text-xs font-black text-slate-500">
+                              #{index + 1}
+                            </span>
+                          )}
+                        </div>
+                        <img
+                          src={member.avatar || DEFAULT_AVATAR}
+                          className="w-10 h-10 rounded-full object-cover border-2 border-white/10"
+                        />
+                        <div className="flex-1">
+                          <h4 className="font-black text-white italic uppercase text-sm">
+                            {member.name}
+                          </h4>
+                          <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-wider">
+                            Level {member.level || 1}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-black text-white tracking-tighter">
+                            {member.xp || 0}
+                          </p>
+                          <p className="text-[8px] text-slate-500 font-bold uppercase tracking-widest">
+                            XP
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            </div>
+          ) : activeTab === "achievements" ? (
+            <div className="space-y-6 animate-in fade-in duration-300">
+              <div className="pt-2">
+                <h3 className="text-xl font-black text-white italic uppercase tracking-tighter mb-6 flex items-center gap-2">
+                  <Trophy size={20} className="text-indigo-500" /> Achievements
+                </h3>
+
+                <div className="grid grid-cols-1 gap-4">
+                  {currentUser?.achievements.map((ach) => (
+                    <div
+                      key={ach.id}
+                      className={`p-5 rounded-3xl border transition-all relative overflow-hidden ${
+                        ach.unlockedAt
+                          ? "bg-indigo-600/10 border-indigo-500/30"
+                          : "bg-slate-800/30 border-white/5 grayscale opacity-60"
+                      }`}
+                    >
+                      {ach.unlockedAt && (
+                        <div className="absolute top-0 right-0 p-2">
+                          <CheckCircle2 size={16} className="text-indigo-400" />
+                        </div>
+                      )}
+                      <div className="flex gap-4">
+                        <div className="text-3xl">{ach.icon}</div>
+                        <div className="flex-1">
+                          <h4 className="font-black text-white italic uppercase text-sm">
+                            {ach.title}
+                          </h4>
+                          <p className="text-[10px] text-slate-400 font-bold uppercase mt-1 leading-relaxed">
+                            {ach.description}
+                          </p>
+
+                          <div className="mt-4">
+                            <div className="flex justify-between items-center mb-1.5">
+                              <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">
+                                Progress
+                              </span>
+                              <span className="text-[8px] font-black text-indigo-400 uppercase tracking-widest">
+                                {ach.type === "distance"
+                                  ? `${(ach.progress / 1000).toFixed(1)} / ${(ach.requirement / 1000).toFixed(1)} KM`
+                                  : `${ach.progress} / ${ach.requirement}`}
+                              </span>
+                            </div>
+                            <div className="h-1.5 w-full bg-slate-900 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-indigo-500 transition-all duration-500"
+                                style={{
+                                  width: `${Math.min(100, (ach.progress / ach.requirement) * 100)}%`,
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           ) : activeTab === "profile" ? (
             <div className="space-y-8 animate-in fade-in duration-300">
