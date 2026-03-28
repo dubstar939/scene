@@ -196,6 +196,48 @@ async function startServer() {
     }
   });
 
+  apiRouter.post("/profile/update", async (req, res) => {
+    const { id, name, avatar, car } = req.body;
+    if (!id) {
+      return res.status(400).json({ error: "User ID is required" });
+    }
+
+    // In a real app, we would verify the session/token here
+    
+    try {
+      // Find user by ID
+      let user = null;
+      if (supabase) {
+        const { data, error } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', id)
+          .single();
+        if (data) user = data;
+      } else {
+        user = Array.from(registeredUsers.values()).find((u: any) => u.id === id);
+      }
+
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      const updatedUser = {
+        ...user,
+        name: name || user.name,
+        avatar: avatar || user.avatar,
+        car: car !== undefined ? car : user.car
+      };
+
+      await saveUser(updatedUser);
+      const { password: _, ...userWithoutPassword } = updatedUser;
+      res.json({ user: userWithoutPassword });
+    } catch (err) {
+      console.error("Profile update error:", err);
+      res.status(500).json({ error: "Error updating profile" });
+    }
+  });
+
   app.use("/api", apiRouter);
 
   // Global error handler for JSON parsing errors
@@ -218,16 +260,28 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    app.use(express.static(path.join(__dirname, "dist")));
-    app.get("*all", (req, res) => {
-      res.sendFile(path.join(__dirname, "dist", "index.html"));
+    const distPath = path.join(__dirname, "dist");
+    if (fs.existsSync(distPath)) {
+      app.use(express.static(distPath));
+      app.get("*", (req, res) => {
+        res.sendFile(path.join(distPath, "index.html"));
+      });
+    }
+  }
+
+  if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on http://0.0.0.0:${PORT}`);
+      console.log(`Health check available at http://0.0.0.0:${PORT}/api/health`);
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://0.0.0.0:${PORT}`);
-    console.log(`Health check available at http://0.0.0.0:${PORT}/api/health`);
-  });
+  return app;
 }
 
-startServer();
+const appPromise = startServer();
+
+export default async (req: any, res: any) => {
+  const app = await appPromise;
+  return app(req, res);
+};

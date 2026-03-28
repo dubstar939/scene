@@ -65,7 +65,11 @@ import {
   Trophy,
   BarChart3,
   Maximize2,
+  Mail,
+  User,
 } from "lucide-react";
+import MapComponent from "./src/components/MapComponent";
+import AuthComponent from "./src/components/AuthComponent";
 import {
   Member,
   Spot,
@@ -1663,24 +1667,51 @@ const App: React.FC = () => {
     setTimeout(() => setShareFeedback(null), 3000);
   };
 
-  const handleUpdateProfile = () => {
+  const handleUpdateProfile = async () => {
     if (!currentUser) return;
-    const updatedUser: Member = {
-      ...currentUser,
+    
+    const updatedData = {
+      id: currentUser.id,
       name: profileForm.name || currentUser.name,
       car: profileForm.car,
       avatar: profileForm.avatar || currentUser.avatar,
     };
-    setCurrentUser(updatedUser);
-    setMembers((prev) =>
-      prev.map((m) => (m.id === currentUser.id ? updatedUser : m)),
-    );
-    if (socketRef.current) {
-      socketRef.current.track({ user: updatedUser });
+
+    try {
+      const response = await fetch("/api/profile/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updatedData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to update profile");
+      }
+
+      const { user: updatedUserFromServer } = await response.json();
+      
+      const updatedUser: Member = {
+        ...currentUser,
+        ...updatedUserFromServer,
+      };
+
+      setCurrentUser(updatedUser);
+      setMembers((prev) =>
+        prev.map((m) => (m.id === currentUser.id ? updatedUser : m)),
+      );
+      
+      if (socketRef.current) {
+        socketRef.current.track({ user: updatedUser });
+      }
+      
+      setShareFeedback("Profile Updated Successfully");
+      setTimeout(() => setShareFeedback(null), 3000);
+      setActiveTab("members");
+    } catch (err: any) {
+      console.error("Profile update error:", err);
+      setLoginError(err.message || "Error updating profile");
     }
-    setShareFeedback("Profile Updated Successfully");
-    setTimeout(() => setShareFeedback(null), 3000);
-    setActiveTab("members");
   };
 
   /**
@@ -1861,275 +1892,23 @@ const App: React.FC = () => {
 
   if (!isLoggedIn) {
     return (
-      <div className="flex flex-col items-center justify-center h-full bg-[#020617] text-slate-50 p-6 text-center overflow-hidden">
-        {isLoggingIn ? (
-          <div className="flex flex-col items-center animate-in zoom-in fade-in duration-700">
-            <div className="relative mb-12">
-              {" "}
-              <div className="w-24 h-24 border-b-4 border-indigo-500 border-solid rounded-full animate-spin"></div>{" "}
-              <div className="absolute inset-0 flex items-center justify-center">
-                {" "}
-                <Loader2 className="text-indigo-400 w-8 h-8 animate-pulse" />{" "}
-              </div>{" "}
-            </div>
-            <h2 className="text-3xl font-black mb-2 italic tracking-tighter uppercase tracking-widest">
-              Scene
-            </h2>
-            <p className="text-slate-400 font-bold uppercase text-[10px] tracking-widest">
-              Authenticating...
-            </p>
-          </div>
-        ) : (
-          <div className="max-w-xl w-full max-h-full overflow-y-auto no-scrollbar py-10">
-            <div className="mb-12 relative flex items-center justify-center gap-4">
-              <Users className="w-20 h-20 text-indigo-500" />
-              <div className="text-left">
-                <p className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.4em]">
-                  Official App
-                </p>
-                <h1 className="text-7xl font-black tracking-tighter uppercase italic leading-none">
-                  Scene
-                </h1>
-              </div>
-            </div>
-
-            {loginMode === "initial" && (
-              <div className="space-y-6">
-                <button
-                  onClick={() => setLoginMode("email-login")}
-                  className="w-full flex items-center justify-center gap-4 bg-slate-800 hover:bg-slate-700 text-white px-10 py-6 rounded-[2rem] font-black transition-all shadow-xl active:scale-95 group border border-white/5"
-                >
-                  <LogIn className="w-6 h-6 text-indigo-400" />
-                  Sign In with Email
-                </button>
-
-                <button
-                  onClick={() => setLoginMode("email-signup")}
-                  className="w-full flex items-center justify-center gap-4 bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 px-10 py-6 rounded-[2rem] font-black transition-all shadow-xl active:scale-95 group border border-indigo-500/20"
-                >
-                  <UserPlus className="w-6 h-6 text-indigo-400" />
-                  Create New Profile
-                </button>
-
-                <div className="relative flex items-center py-4">
-                  <div className="flex-grow border-t border-slate-800"></div>
-                  <span className="flex-shrink mx-4 text-slate-500 font-black uppercase text-[10px] tracking-widest">
-                    or browse as guest
-                  </span>
-                  <div className="flex-grow border-t border-slate-800"></div>
-                </div>
-
-                <div className="space-y-4 bg-slate-900/50 p-6 rounded-3xl border border-white/5">
-                  <div className="flex flex-col items-center gap-4 mb-2">
-                    <div className="relative group">
-                      <img
-                        src={guestAvatar || DEFAULT_AVATAR}
-                        className="w-20 h-20 rounded-full object-cover border-2 border-indigo-500/50"
-                      />
-                      <label className="absolute inset-0 flex items-center justify-center bg-black/60 rounded-full opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity">
-                        <Plus className="text-white" />
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) => handleFileChange(e, "guest")}
-                        />
-                      </label>
-                    </div>
-                    <p className="text-[10px] font-bold text-slate-500 uppercase">
-                      Upload Guest Photo
-                    </p>
-                  </div>
-                  <input
-                    type="text"
-                    placeholder="Guest Username"
-                    value={guestUsername}
-                    onChange={(e) => setGuestUsername(e.target.value)}
-                    className="w-full bg-slate-800/50 border border-slate-700 rounded-2xl py-4 px-6 text-base outline-none focus:border-indigo-500 transition-colors"
-                  />
-                  <button
-                    onClick={handleGuestLogin}
-                    className="w-full flex items-center justify-center gap-4 bg-indigo-600 hover:bg-indigo-500 text-white px-10 py-5 rounded-[2rem] font-black shadow-xl active:scale-95 border border-white/5"
-                  >
-                    <UserPlus className="w-6 h-6" /> Join Scene
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {(loginMode === "email-login" || loginMode === "email-signup") && (
-              <div className="space-y-6 animate-in slide-in-from-right duration-300">
-                <button
-                  onClick={() => setLoginMode("initial")}
-                  className="flex items-center gap-2 text-slate-400 hover:text-white font-bold uppercase text-[10px] tracking-widest mb-4"
-                >
-                  <ArrowLeft size={14} /> Back to options
-                </button>
-
-                <h2 className="text-3xl font-black italic uppercase tracking-tighter text-white">
-                  {loginMode === "email-login" ? "Sign In" : "Create Profile"}
-                </h2>
-
-                <div className="space-y-4 bg-slate-900/50 p-8 rounded-3xl border border-white/5 text-left">
-                  {loginMode === "email-signup" && (
-                    <>
-                      <div className="flex flex-col items-center gap-4 mb-6">
-                        <div className="relative group">
-                          <img
-                            src={emailForm.avatar || DEFAULT_AVATAR}
-                            className="w-24 h-24 rounded-full object-cover border-2 border-indigo-500"
-                          />
-                          <label className="absolute inset-0 flex items-center justify-center bg-black/60 rounded-full opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity">
-                            <Plus className="text-white" />
-                            <input
-                              type="file"
-                              accept="image/*"
-                              className="hidden"
-                              onChange={(e) => handleFileChange(e, "email")}
-                            />
-                          </label>
-                        </div>
-                        <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">
-                          Upload Profile Picture
-                        </p>
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 ml-2">
-                          Display Name
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="Your Name"
-                          value={emailForm.name}
-                          onChange={(e) =>
-                            setEmailForm({ ...emailForm, name: e.target.value })
-                          }
-                          className="w-full bg-slate-800/50 border border-slate-700 rounded-2xl py-4 px-6 text-base outline-none focus:border-indigo-500 transition-colors"
-                        />
-                      </div>
-                    </>
-                  )}
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 ml-2">
-                      Email Address
-                    </label>
-                    <input
-                      type="email"
-                      placeholder="email@example.com"
-                      value={emailForm.email}
-                      onChange={(e) =>
-                        setEmailForm({ ...emailForm, email: e.target.value })
-                      }
-                      className="w-full bg-slate-800/50 border border-slate-700 rounded-2xl py-4 px-6 text-base outline-none focus:border-indigo-500 transition-colors"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 ml-2">
-                      Password
-                    </label>
-                    <input
-                      type="password"
-                      placeholder="••••••••"
-                      value={emailForm.password}
-                      onChange={(e) =>
-                        setEmailForm({ ...emailForm, password: e.target.value })
-                      }
-                      className="w-full bg-slate-800/50 border border-slate-700 rounded-2xl py-4 px-6 text-base outline-none focus:border-indigo-500 transition-colors"
-                    />
-                  </div>
-
-                  {loginMode === "email-login" && (
-                    <div className="flex items-center justify-between px-2">
-                      <label className="flex items-center gap-2 cursor-pointer group">
-                        <div className="relative">
-                          <input
-                            type="checkbox"
-                            checked={emailForm.rememberMe}
-                            onChange={(e) =>
-                              setEmailForm({
-                                ...emailForm,
-                                rememberMe: e.target.checked,
-                              })
-                            }
-                            className="peer sr-only"
-                          />
-                          <div className="w-5 h-5 border-2 border-slate-700 rounded-md bg-slate-800/50 peer-checked:bg-indigo-600 peer-checked:border-indigo-500 transition-all"></div>
-                          <div className="absolute inset-0 flex items-center justify-center text-white scale-0 peer-checked:scale-100 transition-transform">
-                            <svg
-                              width="12"
-                              height="12"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="4"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <polyline points="20 6 9 17 4 12"></polyline>
-                            </svg>
-                          </div>
-                        </div>
-                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest group-hover:text-slate-400 transition-colors">
-                          Remember Me
-                        </span>
-                      </label>
-                      <button
-                        onClick={handleForgotPassword}
-                        className="text-[10px] font-black text-indigo-400 uppercase tracking-widest hover:text-indigo-300 transition-colors"
-                      >
-                        Forgot Password?
-                      </button>
-                    </div>
-                  )}
-
-                  {resetSent && (
-                    <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-emerald-400 text-[10px] font-bold uppercase tracking-widest text-center animate-in fade-in slide-in-from-top-2">
-                      Password reset link sent to your email!
-                    </div>
-                  )}
-
-                  <button
-                    onClick={() =>
-                      handleEmailAuth(
-                        loginMode === "email-login" ? "login" : "signup",
-                      )
-                    }
-                    className="w-full flex items-center justify-center gap-4 bg-indigo-600 hover:bg-indigo-500 text-white px-10 py-5 rounded-[2rem] font-black shadow-xl active:scale-95 border border-white/5 mt-4"
-                  >
-                    {loginMode === "email-login" ? "Sign In" : "Create Profile"}
-                  </button>
-
-                  <p className="text-center text-slate-500 text-xs font-bold mt-4">
-                    {loginMode === "email-login"
-                      ? "Don't have a profile?"
-                      : "Already have a profile?"}
-                    <button
-                      onClick={() =>
-                        setLoginMode(
-                          loginMode === "email-login"
-                            ? "email-signup"
-                            : "email-login",
-                        )
-                      }
-                      className="text-indigo-400 hover:text-indigo-300 ml-2 underline"
-                    >
-                      {loginMode === "email-login"
-                        ? "Create one now"
-                        : "Sign in instead"}
-                    </button>
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {loginError && (
-              <div className="mt-8 p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-400 text-xs font-bold uppercase tracking-wider animate-in fade-in slide-in-from-bottom-2">
-                {loginError}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+      <AuthComponent
+        isLoggedIn={isLoggedIn}
+        isLoggingIn={isLoggingIn}
+        loginMode={loginMode}
+        setLoginMode={setLoginMode}
+        loginError={loginError}
+        guestUsername={guestUsername}
+        setGuestUsername={setGuestUsername}
+        guestAvatar={guestAvatar}
+        emailForm={emailForm}
+        setEmailForm={setEmailForm}
+        resetSent={resetSent}
+        handleGuestLogin={handleGuestLogin}
+        handleEmailAuth={handleEmailAuth}
+        handleForgotPassword={handleForgotPassword}
+        handleFileChange={handleFileChange}
+      />
     );
   }
 
@@ -3717,222 +3496,34 @@ const App: React.FC = () => {
         </div>
       </div>
 
-      <div className={`flex-1 relative ${isMapTab ? "h-[55%]" : "h-[15%]"} md:h-full order-1 md:order-2 transition-all duration-500`}>
-        {/* Map Layer Controls */}
-        {isMapTab ? (
-          <div className="absolute top-6 right-6 z-[1000] flex flex-col gap-2">
-            {(["dark", "satellite", "traffic"] as const).map((layer) => (
-              <button
-                key={layer}
-                onClick={() => setMapLayer(layer)}
-                className={`p-3 rounded-2xl border backdrop-blur-xl transition-all shadow-xl ${mapLayer === layer ? "bg-indigo-600 border-indigo-500 text-white" : "bg-slate-900/80 border-white/10 text-slate-400 hover:text-white"}`}
-                title={`${layer.charAt(0).toUpperCase() + layer.slice(1)} View`}
-              >
-                {layer === "dark" ? (
-                  <Ghost size={18} />
-                ) : layer === "satellite" ? (
-                  <Eye size={18} />
-                ) : (
-                  <Navigation size={18} />
-                )}
-              </button>
-            ))}
-          </div>
-        ) : (
-          <button
-            onClick={() => setActiveTab("members")}
-            className="absolute inset-0 z-[1000] bg-black/20 backdrop-blur-[1px] flex items-center justify-center group md:hidden"
-          >
-            <div className="bg-slate-900/80 border border-white/10 px-4 py-2 rounded-full text-[8px] font-black uppercase tracking-widest text-slate-400 group-hover:text-white transition-all flex items-center gap-2">
-              <Maximize2 size={10} />
-              Tap to Expand Map
-            </div>
-          </button>
-        )}
-
-        <style>{`
-          .member-popup .leaflet-popup-content-wrapper {
-            background: transparent !important;
-            box-shadow: none !important;
-            padding: 0 !important;
-          }
-          .member-popup .leaflet-popup-content {
-            margin: 0 !important;
-            width: auto !important;
-          }
-          .member-popup .leaflet-popup-tip-container {
-            display: none !important;
-          }
-          .member-popup .leaflet-popup-close-button {
-            color: white !important;
-            top: 8px !important;
-            right: 8px !important;
-            z-index: 10 !important;
-          }
-        `}</style>
-        <MapContainer
-          center={mapDisplayCenter}
-          zoom={13}
-          zoomControl={false}
-          dragging={true}
-          scrollWheelZoom={true}
-          doubleClickZoom={true}
-          style={{ height: "100%", width: "100%" }}
-        >
-          <TileLayer
-            url={
-              mapLayer === "satellite"
-                ? "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                : mapLayer === "traffic"
-                  ? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                  : "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-            }
-            attribution="&copy; CAR SCENE v2"
-          />
-          <MapViewUpdater center={mapDisplayCenter} />
-          <MapEventsHandler
-            onMapClick={handleMapClick}
-            isAddingWaypoint={isAddingWaypoint}
-            isAddingSpot={isAddingSpot}
-          />
-          {cruise.isActive && <CruisePolyline route={cruise.route} />}
-          {cruise.isActive &&
-            cruise.route
-              .slice(1)
-              .map((p, i) => (
-                <Marker key={i} position={p} icon={createWaypointIcon(i)} />
-              ))}
-          {spots.map((spot) => (
-            <Marker
-              key={spot.id}
-              position={spot.location}
-              icon={createSpotMapIcon(spot.type)}
-            >
-              <Popup className="member-popup">
-                <div className="min-w-[200px] p-0 bg-slate-900 text-white rounded-2xl overflow-hidden border border-white/10 shadow-2xl">
-                  <div className="p-4 bg-slate-800/50 border-b border-white/5">
-                    <h3 className="font-black italic uppercase text-sm text-white">
-                      {spot.name}
-                    </h3>
-                    <span className="text-[8px] text-indigo-400 font-black uppercase tracking-widest">
-                      {spot.type} Spot
-                    </span>
-                  </div>
-                  <div className="p-4 space-y-3">
-                    {spot.description && (
-                      <p className="text-[10px] text-slate-400 leading-relaxed">
-                        {spot.description}
-                      </p>
-                    )}
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setMapDisplayCenter(spot.location)}
-                        className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all"
-                      >
-                        Focus
-                      </button>
-                      {spot.createdBy === currentUser?.id && (
-                        <button
-                          onClick={() => handleDeleteSpot(spot.id)}
-                          className="p-2 bg-red-500/10 text-red-400 rounded-xl hover:bg-red-500/20 transition-all"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </Popup>
-            </Marker>
-          ))}
-          {isAddingSpot && newSpotForm.location && (
-            <Marker
-              position={newSpotForm.location as [number, number]}
-              icon={createSpotMapIcon(newSpotForm.type as Spot["type"])}
-            >
-              <Popup>
-                <div className="p-2 text-xs font-bold">New Spot Location</div>
-              </Popup>
-            </Marker>
-          )}
-          {members
-            .filter((m) => m.status !== "Offline" && m.id !== currentUser?.id)
-            .filter((m) => {
-              if (m.id === currentUser?.id) return true;
-              
-              const isFavorite = favoriteMemberIds.includes(m.id);
-              
-              // Ghost Mode: Hide from non-favorites
-              if (m.isGhost && !isFavorite) return false;
-              
-              // Visibility: Favorites only
-              if (m.privacy?.visibility === "favorites" && !isFavorite) return false;
-              
-              return !showOnlyFavorites || isFavorite;
-            })
-            .map((m) => (
-              <Marker
-                key={m.id}
-                position={m.location}
-                icon={createMemberMapIcon(m)}
-              >
-                <Popup className="member-popup">
-                  <div className="min-w-[180px] p-0 bg-slate-900 text-white rounded-2xl overflow-hidden border border-white/10 shadow-2xl">
-                    {/* Header with Avatar and Name */}
-                    <div className="flex items-center gap-3 p-3 bg-slate-800/50 border-b border-white/5">
-                      <div className="relative">
-                        <img
-                          src={m.avatar || DEFAULT_AVATAR}
-                          className="w-10 h-10 rounded-xl object-cover border border-white/10 shadow-lg"
-                        />
-                        <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-emerald-500 border-2 border-slate-900 rounded-full shadow-sm"></div>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-black italic uppercase text-xs truncate leading-tight text-white">
-                          {m.name}
-                        </p>
-                        <span className="text-[8px] text-emerald-400 flex items-center gap-1 font-black uppercase tracking-wider mt-0.5">
-                          <Navigation size={8} className="animate-pulse" />{" "}
-                          {m.status}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Details and Actions */}
-                    <div className="p-3 space-y-2.5">
-                      {m.car && (
-                        <div className="flex items-center gap-2 text-indigo-300 bg-indigo-500/10 px-2.5 py-2 rounded-xl border border-indigo-500/20">
-                          <Car size={12} className="text-indigo-400 shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-[7px] text-slate-500 font-bold uppercase tracking-widest leading-none mb-0.5">
-                              Verified Build
-                            </p>
-                            <p className="text-[9px] font-black uppercase tracking-tight truncate leading-none">
-                              {m.car}
-                            </p>
-                          </div>
-                        </div>
-                      )}
-
-                      <button
-                        onClick={() => handleStartDM(m)}
-                        className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white py-2.5 rounded-xl transition-all text-[9px] font-black uppercase tracking-widest shadow-lg shadow-indigo-600/20 active:scale-95"
-                      >
-                        <MessageSquare size={12} />
-                        Send Message
-                      </button>
-                    </div>
-                  </div>
-                </Popup>
-              </Marker>
-            ))}
-          {currentUser &&
-            currentUser.status !== "Offline" &&
-            currentUserLocation && (
-              <Marker position={currentUserLocation} icon={userMarkerIcon} />
-            )}
-        </MapContainer>
-      </div>
+      <MapComponent
+        center={mapDisplayCenter}
+        mapLayer={mapLayer}
+        setMapLayer={setMapLayer}
+        isMapTab={isMapTab}
+        setActiveTab={setActiveTab}
+        spots={spots}
+        members={members}
+        currentUser={currentUser}
+        currentUserLocation={currentUserLocation}
+        isAddingSpot={isAddingSpot}
+        newSpotForm={newSpotForm}
+        favoriteMemberIds={favoriteMemberIds}
+        showOnlyFavorites={showOnlyFavorites}
+        handleMapClick={handleMapClick}
+        handleDeleteSpot={handleDeleteSpot}
+        handleStartDM={handleStartDM}
+        setMapDisplayCenter={setMapDisplayCenter}
+        MapViewUpdater={MapViewUpdater}
+        MapEventsHandler={MapEventsHandler}
+        isAddingWaypoint={isAddingWaypoint}
+        cruise={cruise}
+        createWaypointIcon={createWaypointIcon}
+        createSpotMapIcon={createSpotMapIcon}
+        createMemberMapIcon={createMemberMapIcon}
+        userMarkerIcon={userMarkerIcon}
+        CruisePolyline={CruisePolyline}
+      />
     </div>
   );
 };
