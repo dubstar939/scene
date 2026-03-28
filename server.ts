@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import fs from "fs";
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 
 import { createClient } from "@supabase/supabase-js";
 
@@ -27,7 +28,12 @@ create table users (
 */
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_ANON_KEY;
-const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey) : null;
+
+const isPlaceholder = (val?: string) => !val || val === 'your_supabase_url' || val === 'your_supabase_anon_key';
+
+const supabase = (!isPlaceholder(supabaseUrl) && !isPlaceholder(supabaseKey)) 
+  ? createClient(supabaseUrl!, supabaseKey!) 
+  : null;
 
 if (supabase) {
   console.log("Supabase client initialized for persistent storage.");
@@ -219,7 +225,8 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Server running on http://0.0.0.0:${PORT}`);
+    console.log(`Health check available at http://0.0.0.0:${PORT}/api/health`);
   });
 }
 

@@ -61,8 +61,31 @@ export interface AppState {
   currentUser: Member | null;
   userLocation: [number, number] | null;
   members: Member[];
+  contacts: Contact[];
+  tasks: Task[];
   loading: boolean;
   error: string | null;
+}
+
+export interface Contact {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  company?: string;
+  hauler?: string;
+  createdAt: string;
+}
+
+export interface Task {
+  id: string;
+  title: string;
+  description: string;
+  priority: 'low' | 'medium' | 'high';
+  status: 'pending' | 'in-progress' | 'completed';
+  hauler?: string;
+  createdAt: string;
+  dueDate?: string;
 }
 
 export interface Message {

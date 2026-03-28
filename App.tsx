@@ -16,6 +16,7 @@ import {
 } from "react-leaflet";
 import { QRCodeCanvas } from "qrcode.react";
 import L from "leaflet";
+import Papa from "papaparse";
 import { RealtimeChannel } from "@supabase/supabase-js";
 import {
   LogIn,
@@ -63,6 +64,7 @@ import {
   Camera,
   Trophy,
   BarChart3,
+  Maximize2,
 } from "lucide-react";
 import {
   Member,
@@ -73,9 +75,14 @@ import {
   Cruise,
   Reminder,
   Achievement,
+  Contact,
+  Task,
 } from "./types";
 import { GoogleGenAI } from "@google/genai";
 import { supabase } from "./src/lib/supabase";
+import ContactsTab from "./src/components/Tabs/ContactsTab";
+import TasksTab from "./src/components/Tabs/TasksTab";
+import NavigationComponent from "./src/components/Navigation";
 
 // Custom Member Map Icon based on status
 const createMemberMapIcon = (member: Member) => {
@@ -288,6 +295,14 @@ const CruisePolyline = ({ route }: { route: [number, number][] }) => {
   );
 };
 
+/**
+ * Main Application Component
+ * 
+ * A dashboard for managing members, chats, contacts, and tasks.
+ * Integrates with Supabase for real-time updates and Leaflet for mapping.
+ * 
+ * @returns {JSX.Element} The main application layout
+ */
 const App: React.FC = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
@@ -327,7 +342,23 @@ const App: React.FC = () => {
     | "studio"
     | "leaderboard"
     | "achievements"
+    | "contacts"
+    | "tasks"
   >("members");
+
+  const isMapTab = ["members", "spots", "cruise", "discover"].includes(activeTab);
+
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [taskFilters, setTaskFilters] = useState<{
+    hauler: string;
+    priority: string;
+    dateRange: { start: string; end: string };
+  }>({
+    hauler: "",
+    priority: "",
+    dateRange: { start: "", end: "" },
+  });
   const [shareFeedback, setShareFeedback] = useState<string | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
 
@@ -1226,6 +1257,91 @@ const App: React.FC = () => {
     setLoginError(null);
     setTimeout(() => setResetSent(false), 5000);
   };
+  /**
+   * Adds a sample task to the tasks list.
+   * Used for testing task management and filtering.
+   */
+  /**
+   * Adds a sample task to the tasks list.
+   * Used for testing task management and filtering.
+   */
+  const handleAddTask = () => {
+    const newTask: Task = {
+      id: `task-${Date.now()}`,
+      title: "New Task " + (tasks.length + 1),
+      description: "Sample task description",
+      priority: (["low", "medium", "high"] as const)[Math.floor(Math.random() * 3)],
+      status: "pending",
+      hauler: (["Hauler A", "Hauler B", "Hauler C"] as const)[Math.floor(Math.random() * 3)],
+      createdAt: new Date().toISOString(),
+    };
+    setTasks((prev) => [newTask, ...prev]);
+  };
+
+  /**
+   * Handles CSV file import for contacts.
+   * Parses the file using PapaParse and updates the contacts state.
+   * 
+   * @param {React.ChangeEvent<HTMLInputElement>} e - The file input change event
+   */
+  /**
+   * Handles CSV file import for contacts.
+   * Parses the file using PapaParse and updates the contacts state.
+   * 
+   * @param {React.ChangeEvent<HTMLInputElement>} e - The file input change event
+   */
+  const handleCSVImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (results) => {
+        const importedContacts: Contact[] = results.data.map((row: any, index) => ({
+          id: `imported-${Date.now()}-${index}`,
+          name: row.name || row.Name || "Unknown",
+          email: row.email || row.Email || "",
+          phone: row.phone || row.Phone || "",
+          company: row.company || row.Company || "",
+          hauler: row.hauler || row.Hauler || "",
+          createdAt: new Date().toISOString(),
+        }));
+        setContacts((prev) => [...prev, ...importedContacts]);
+        setShareFeedback(`Successfully imported ${importedContacts.length} contacts`);
+      },
+      error: (error) => {
+        setLoginError(`CSV Import Error: ${error.message}`);
+      },
+    });
+  };
+
+  const filteredTasks = useMemo(() => {
+    return tasks.filter((task) => {
+      const matchesHauler = !taskFilters.hauler || task.hauler?.toLowerCase().includes(taskFilters.hauler.toLowerCase());
+      const matchesPriority = !taskFilters.priority || task.priority === taskFilters.priority;
+      
+      let matchesDate = true;
+      if (taskFilters.dateRange.start || taskFilters.dateRange.end) {
+        const taskDate = new Date(task.createdAt).getTime();
+        if (taskFilters.dateRange.start) {
+          matchesDate = matchesDate && taskDate >= new Date(taskFilters.dateRange.start).getTime();
+        }
+        if (taskFilters.dateRange.end) {
+          matchesDate = matchesDate && taskDate <= new Date(taskFilters.dateRange.end).getTime();
+        }
+      }
+
+      return matchesHauler && matchesPriority && matchesDate;
+    });
+  }, [tasks, taskFilters]);
+  /**
+   * Handles file uploads for profile pictures or other assets.
+   * Reads the file as a data URL and updates the corresponding state.
+   * 
+   * @param {React.ChangeEvent<HTMLInputElement>} e - The file input change event
+   * @param {"guest" | "profile" | "email"} target - The type of avatar being updated
+   */
   const handleFileChange = (
     e: React.ChangeEvent<HTMLInputElement>,
     target: "guest" | "profile" | "email",
@@ -1567,6 +1683,12 @@ const App: React.FC = () => {
     setActiveTab("members");
   };
 
+  /**
+   * Handles user status updates.
+   * Updates the currentUser state with the selected status.
+   * 
+   * @param {React.ChangeEvent<HTMLSelectElement>} e - The select change event
+   */
   const handleStatusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     if (!currentUser) return;
     const newStatus = e.target.value as Member["status"];
@@ -2090,7 +2212,7 @@ const App: React.FC = () => {
         ))}
       </div>
 
-      <div className="w-full md:w-[400px] flex flex-col border-r border-white/5 bg-slate-900/60 backdrop-blur-3xl z-[1000] h-[45%] md:h-full shadow-2xl overflow-hidden order-2 md:order-1">
+      <div className={`w-full md:w-[400px] flex flex-col border-r border-white/5 bg-slate-900/60 backdrop-blur-3xl z-[1000] ${isMapTab ? "h-[45%]" : "h-[85%]"} md:h-full shadow-2xl overflow-hidden order-2 md:order-1 transition-all duration-500`}>
         <div className="p-4 md:p-8 border-b border-white/5">
           <div className="flex items-center justify-between mb-4">
             <div>
@@ -2181,33 +2303,25 @@ const App: React.FC = () => {
           )}
         </div>
 
-        <div className="flex p-2 gap-1 bg-black/40 m-4 md:m-6 rounded-2xl border border-white/5 overflow-x-auto no-scrollbar">
-          {(
-            [
-              "members",
-              "chat",
-              "discover",
-              "spots",
-              "cruise",
-              "reminders",
-              "leaderboard",
-              "achievements",
-              "profile",
-              "studio",
-            ] as const
-          ).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`flex-shrink-0 px-4 py-3 text-[10px] uppercase font-black rounded-xl transition-all ${activeTab === tab ? "bg-indigo-600 text-white shadow-lg" : "text-slate-500"}`}
-            >
-              {tab === "reminders" ? "Events" : tab}
-            </button>
-          ))}
-        </div>
+        <NavigationComponent 
+          activeTab={activeTab} 
+          setActiveTab={setActiveTab} 
+        />
 
         <div className="flex-1 overflow-y-auto px-4 md:px-6 pb-8 custom-scrollbar">
-          {activeTab === "discover" ? (
+          {activeTab === "contacts" ? (
+            <ContactsTab 
+              contacts={contacts} 
+              handleCSVImport={handleCSVImport} 
+            />
+          ) : activeTab === "tasks" ? (
+            <TasksTab 
+              filteredTasks={filteredTasks} 
+              taskFilters={taskFilters} 
+              setTaskFilters={setTaskFilters} 
+              handleAddTask={handleAddTask} 
+            />
+          ) : activeTab === "discover" ? (
             <div className="space-y-6 animate-in fade-in duration-300">
               <div className="pt-2">
                 <div className="flex items-center justify-between mb-4">
@@ -3603,26 +3717,38 @@ const App: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex-1 relative h-[55%] md:h-full order-1 md:order-2">
+      <div className={`flex-1 relative ${isMapTab ? "h-[55%]" : "h-[15%]"} md:h-full order-1 md:order-2 transition-all duration-500`}>
         {/* Map Layer Controls */}
-        <div className="absolute top-6 right-6 z-[1000] flex flex-col gap-2">
-          {(["dark", "satellite", "traffic"] as const).map((layer) => (
-            <button
-              key={layer}
-              onClick={() => setMapLayer(layer)}
-              className={`p-3 rounded-2xl border backdrop-blur-xl transition-all shadow-xl ${mapLayer === layer ? "bg-indigo-600 border-indigo-500 text-white" : "bg-slate-900/80 border-white/10 text-slate-400 hover:text-white"}`}
-              title={`${layer.charAt(0).toUpperCase() + layer.slice(1)} View`}
-            >
-              {layer === "dark" ? (
-                <Ghost size={18} />
-              ) : layer === "satellite" ? (
-                <Eye size={18} />
-              ) : (
-                <Navigation size={18} />
-              )}
-            </button>
-          ))}
-        </div>
+        {isMapTab ? (
+          <div className="absolute top-6 right-6 z-[1000] flex flex-col gap-2">
+            {(["dark", "satellite", "traffic"] as const).map((layer) => (
+              <button
+                key={layer}
+                onClick={() => setMapLayer(layer)}
+                className={`p-3 rounded-2xl border backdrop-blur-xl transition-all shadow-xl ${mapLayer === layer ? "bg-indigo-600 border-indigo-500 text-white" : "bg-slate-900/80 border-white/10 text-slate-400 hover:text-white"}`}
+                title={`${layer.charAt(0).toUpperCase() + layer.slice(1)} View`}
+              >
+                {layer === "dark" ? (
+                  <Ghost size={18} />
+                ) : layer === "satellite" ? (
+                  <Eye size={18} />
+                ) : (
+                  <Navigation size={18} />
+                )}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <button
+            onClick={() => setActiveTab("members")}
+            className="absolute inset-0 z-[1000] bg-black/20 backdrop-blur-[1px] flex items-center justify-center group md:hidden"
+          >
+            <div className="bg-slate-900/80 border border-white/10 px-4 py-2 rounded-full text-[8px] font-black uppercase tracking-widest text-slate-400 group-hover:text-white transition-all flex items-center gap-2">
+              <Maximize2 size={10} />
+              Tap to Expand Map
+            </div>
+          </button>
+        )}
 
         <style>{`
           .member-popup .leaflet-popup-content-wrapper {
