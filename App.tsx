@@ -2864,7 +2864,7 @@ const App: React.FC = () => {
                   onClick={() => handleShareLocation("group")}
                   className="w-full py-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-center justify-center gap-3 text-emerald-400 font-black uppercase text-[10px] tracking-widest hover:bg-emerald-500/20 transition-all"
                 >
-                  <Share2 size={16} /> Share Cruise Pos to Group
+                  <Share2 size={16} /> Broadcast Location to Group
                 </button>
               )}
 
@@ -2873,9 +2873,9 @@ const App: React.FC = () => {
                   <p className="text-[10px] font-black text-indigo-400 uppercase mb-2">
                     Live Cruise Data
                   </p>
-                  <div className="flex justify-between text-xs font-bold text-slate-300">
-                    <span>Waypoints</span>
-                    <span>{cruise.route.length - 1}</span>
+                  <div className="flex justify-between items-center text-xs font-bold text-slate-300">
+                    <span>Active Waypoints</span>
+                    <span className="bg-indigo-600 text-white px-2 py-1 rounded-md">{Math.max(0, cruise.route.length - 1)}</span>
                   </div>
                 </div>
               )}

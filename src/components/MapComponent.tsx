@@ -73,22 +73,24 @@ const MapComponent: React.FC<MapComponentProps> = ({
       {/* Map Layer Controls */}
       {isMapTab ? (
         <div className="absolute top-6 right-6 z-[1000] flex flex-col gap-2">
-          {(["dark", "satellite", "traffic"] as const).map((layer) => (
-            <button
-              key={layer}
-              onClick={() => setMapLayer(layer)}
-              className={`p-3 rounded-2xl border backdrop-blur-xl transition-all shadow-xl ${mapLayer === layer ? "bg-indigo-600 border-indigo-500 text-white" : "bg-slate-900/80 border-white/10 text-slate-400 hover:text-white"}`}
-              title={`${layer.charAt(0).toUpperCase() + layer.slice(1)} View`}
-            >
-              {layer === "dark" ? (
-                <Ghost size={18} />
-              ) : layer === "satellite" ? (
-                <Eye size={18} />
-              ) : (
-                <Navigation size={18} />
-              )}
-            </button>
-          ))}
+          <button
+            onClick={() => {
+              const layers: ("dark" | "satellite" | "traffic")[] = ["dark", "satellite", "traffic"];
+              const currentIndex = layers.indexOf(mapLayer);
+              const nextIndex = (currentIndex + 1) % layers.length;
+              setMapLayer(layers[nextIndex]);
+            }}
+            className="p-3 rounded-2xl border backdrop-blur-xl transition-all shadow-xl bg-slate-900/80 border-white/10 text-white hover:bg-indigo-600 hover:border-indigo-500"
+            title={`Toggle Map Layer (Current: ${mapLayer})`}
+          >
+            {mapLayer === "dark" ? (
+              <Ghost size={18} />
+            ) : mapLayer === "satellite" ? (
+              <Eye size={18} />
+            ) : (
+              <Navigation size={18} />
+            )}
+          </button>
         </div>
       ) : (
         <button
