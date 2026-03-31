@@ -87,6 +87,7 @@ import { supabase } from "./src/lib/supabase";
 import ContactsTab from "./src/components/Tabs/ContactsTab";
 import TasksTab from "./src/components/Tabs/TasksTab";
 import NavigationComponent from "./src/components/Navigation";
+import SupabaseTest from "./src/components/SupabaseTest";
 
 // Custom Member Map Icon based on status
 const createMemberMapIcon = (member: Member) => {
@@ -2198,6 +2199,7 @@ const App: React.FC = () => {
                   )}
                 </div>
               )}
+              <SupabaseTest />
             </div>
           ) : activeTab === "members" ? (
             <div className="space-y-4 animate-in fade-in duration-500">

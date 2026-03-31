@@ -6,6 +6,8 @@ import dotenv from "dotenv";
 import fs from "fs";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
+import cookieParser from "cookie-parser";
+import { supabaseMiddleware } from "../src/utils/supabase/middleware";
 
 import { createClient } from "@supabase/supabase-js";
 
@@ -26,10 +28,10 @@ create table users (
   car text
 );
 */
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_ANON_KEY;
+const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY;
 
-const isPlaceholder = (val?: string) => !val || val === 'your_supabase_url' || val === 'your_supabase_anon_key';
+const isPlaceholder = (val?: string) => !val || val === 'your_supabase_url' || val === 'your_supabase_anon_key' || val === 'sb_publishable_y8mDLKQOz3ZLy_Jpb6-1Vg_lonFXmzb';
 
 const supabase = (!isPlaceholder(supabaseUrl) && !isPlaceholder(supabaseKey)) 
   ? createClient(supabaseUrl!, supabaseKey!) 
@@ -45,6 +47,20 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
   const USERS_FILE = path.join(process.cwd(), "users.json");
+
+  app.use(cookieParser());
+  app.use(supabaseMiddleware);
+
+  // Sample Supabase route
+  app.get("/api/todos", async (req, res) => {
+    const { createClient: createSupabaseClient } = await import("../src/utils/supabase/server");
+    const supabase = createSupabaseClient(req, res);
+    const { data: todos, error } = await supabase.from("todos").select();
+    if (error) {
+      return res.status(500).json({ error: error.message });
+    }
+    res.json(todos);
+  });
 
   console.log(`Starting server in ${process.env.NODE_ENV || 'development'} mode`);
 
