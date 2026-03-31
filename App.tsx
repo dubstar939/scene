@@ -90,13 +90,18 @@ import NavigationComponent from "./src/components/Navigation";
 import SupabaseTest from "./src/components/SupabaseTest";
 
 // Custom Member Map Icon based on status
-const createMemberMapIcon = (member: Member) => {
+const createMemberMapIcon = (member: Member, isLeader: boolean = false) => {
   let iconHtml = "";
   let bgColor = "";
   let borderColor = "border-white";
   let iconComponent = "";
   let size = "w-8 h-8";
   let ring = "";
+
+  if (isLeader) {
+    ring = "animate-pulse ring-4 ring-indigo-500 ring-offset-2 ring-offset-slate-900";
+    borderColor = "border-indigo-400";
+  }
 
   switch (member.status) {
     case "Cruising":
@@ -1878,11 +1883,15 @@ const App: React.FC = () => {
   const userMarkerIcon = useMemo(() => {
     if (!currentUser) return null;
     const isGhost = privacy.ghostMode;
+    const isLeader = cruise.isActive && currentUser.id === cruise.leaderId;
     const opacity = isGhost ? "opacity-30" : "opacity-100";
     const bgColor = isGhost ? "bg-slate-700" : "bg-indigo-500";
     const ringPulse = isGhost ? "" : "animate-pulse";
+    const leaderRing = isLeader ? "ring-4 ring-indigo-500 ring-offset-2 ring-offset-slate-900" : "";
+    const borderColor = isLeader ? "border-indigo-400" : "border-white";
+
     const iconHtml = `
-      <div class="relative w-10 h-10 rounded-full ${bgColor} border-4 border-white shadow-2xl flex items-center justify-center transition-all duration-700 ${opacity} ${ringPulse}">
+      <div class="relative w-10 h-10 rounded-full ${bgColor} border-4 ${borderColor} shadow-2xl flex items-center justify-center transition-all duration-700 ${opacity} ${ringPulse} ${leaderRing}">
         <img src="${currentUser.avatar || DEFAULT_AVATAR}" class="w-full h-full rounded-full object-cover p-0.5"/>
         ${isGhost ? `<div class="absolute -top-1 -right-1 bg-slate-900 rounded-full p-0.5 border border-white/20"><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 10h.01"/><path d="M15 10h.01"/><path d="M12 2a8 8 0 0 0-8 8v12l3-3 2.5 2.5L12 19l2.5 2.5L17 19l3 3V10a8 8 0 0 0-8-8z"/></svg></div>` : ""}
       </div>`;
@@ -1893,6 +1902,20 @@ const App: React.FC = () => {
       iconAnchor: [20, 20],
     });
   }, [privacy.ghostMode, cruise.isActive, cruise.leaderId, currentUser]);
+
+  const cruiseDistanceMiles = useMemo(() => {
+    if (!cruise.isActive || cruise.route.length < 2) return 0;
+    let totalMeters = 0;
+    for (let i = 0; i < cruise.route.length - 1; i++) {
+      totalMeters += calculateDistance(
+        cruise.route[i][0],
+        cruise.route[i][1],
+        cruise.route[i + 1][0],
+        cruise.route[i + 1][1],
+      );
+    }
+    return totalMeters * 0.000621371;
+  }, [cruise.isActive, cruise.route]);
 
   if (!isLoggedIn) {
     return (
@@ -2916,6 +2939,10 @@ const App: React.FC = () => {
                   <div className="flex justify-between items-center text-xs font-bold text-slate-300">
                     <span>Active Waypoints</span>
                     <span className="bg-indigo-600 text-white px-2 py-1 rounded-md">{Math.max(0, cruise.route.length - 1)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-xs font-bold text-slate-300 mt-2">
+                    <span>Total Distance</span>
+                    <span className="text-emerald-400">{cruiseDistanceMiles.toFixed(2)} Miles</span>
                   </div>
                 </div>
               )}

@@ -33,7 +33,7 @@ interface MapComponentProps {
   cruise: any;
   createWaypointIcon: (index: number) => L.DivIcon;
   createSpotMapIcon: (type: Spot["type"]) => L.DivIcon;
-  createMemberMapIcon: (member: Member) => L.DivIcon;
+  createMemberMapIcon: (member: Member, isLeader?: boolean) => L.DivIcon;
   userMarkerIcon: L.DivIcon;
   CruisePolyline: React.FC<{ route: [number, number][] }>;
 }
@@ -211,7 +211,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
             <Marker
               key={m.id}
               position={m.location}
-              icon={createMemberMapIcon(m)}
+              icon={createMemberMapIcon(m, cruise.isActive && m.id === cruise.leaderId)}
             >
               <Popup className="member-popup">
                 <div className="min-w-[180px] p-0 bg-slate-900 text-white rounded-2xl overflow-hidden border border-white/10 shadow-2xl">
