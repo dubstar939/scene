@@ -1,9 +1,10 @@
 export interface Spot {
   id: string;
   name: string;
-  type: "Meet" | "Photo" | "Cruise" | "Shop";
+  type: "Meetup" | "Fuel" | "Food" | "Scenic";
   location: [number, number];
   description?: string;
+  imageUrl?: string;
   createdBy: string;
   createdAt: string;
 }

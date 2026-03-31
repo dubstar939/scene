@@ -46,6 +46,7 @@ export interface Spot {
   type: 'Meetup' | 'Fuel' | 'Food' | 'Scenic';
   location: [number, number];
   description?: string;
+  imageUrl?: string;
   photo?: string;
   createdBy?: string;
   createdAt?: string;

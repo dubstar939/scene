@@ -152,6 +152,15 @@ const MapComponent: React.FC<MapComponentProps> = ({
                     {spot.type} Spot
                   </span>
                 </div>
+                {spot.imageUrl && (
+                  <div className="w-full h-24 border-b border-white/5">
+                    <img
+                      src={spot.imageUrl}
+                      alt={spot.name}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                )}
                 <div className="p-4 space-y-3">
                   {spot.description && (
                     <p className="text-[10px] text-slate-400 leading-relaxed">

@@ -1348,7 +1348,7 @@ const App: React.FC = () => {
    */
   const handleFileChange = (
     e: React.ChangeEvent<HTMLInputElement>,
-    target: "guest" | "profile" | "email",
+    target: "guest" | "profile" | "email" | "spot",
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1366,6 +1366,8 @@ const App: React.FC = () => {
         setProfileForm((prev) => ({ ...prev, avatar: base64String }));
       if (target === "email")
         setEmailForm((prev) => ({ ...prev, avatar: base64String }));
+      if (target === "spot")
+        setNewSpotForm((prev) => ({ ...prev, imageUrl: base64String }));
     };
     reader.readAsDataURL(file);
   };
@@ -1478,6 +1480,7 @@ const App: React.FC = () => {
       type: newSpotForm.type as Spot["type"],
       location: newSpotForm.location as [number, number],
       description: newSpotForm.description,
+      imageUrl: newSpotForm.imageUrl,
       createdBy: currentUser.id,
       createdAt: new Date().toISOString(),
     };
@@ -2745,6 +2748,32 @@ const App: React.FC = () => {
                         className="w-full bg-slate-900/50 border border-white/5 rounded-xl px-4 py-2 text-sm outline-none focus:border-indigo-500 resize-none"
                       />
                     </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">
+                        Spot Image (Optional)
+                      </label>
+                      <div className="flex items-center gap-4">
+                        {newSpotForm.imageUrl && (
+                          <img
+                            src={newSpotForm.imageUrl}
+                            alt="Spot preview"
+                            className="w-16 h-16 rounded-xl object-cover border border-white/10"
+                          />
+                        )}
+                        <label className="flex-1 flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 border border-white/5 rounded-xl px-4 py-3 cursor-pointer transition-all">
+                          <Camera size={16} className="text-indigo-400" />
+                          <span className="text-xs font-bold text-slate-300">
+                            {newSpotForm.imageUrl ? "Change Image" : "Upload Image"}
+                          </span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => handleFileChange(e, "spot")}
+                          />
+                        </label>
+                      </div>
+                    </div>
                     <button
                       disabled={!newSpotForm.name || !newSpotForm.location}
                       onClick={handleSaveSpot}
@@ -2819,6 +2848,15 @@ const App: React.FC = () => {
                           )}
                         </div>
                       </div>
+                      {spot.imageUrl && (
+                        <div className="mb-4 rounded-xl overflow-hidden border border-white/10">
+                          <img
+                            src={spot.imageUrl}
+                            alt={spot.name}
+                            className="w-full h-32 object-cover"
+                          />
+                        </div>
+                      )}
                       {spot.description && (
                         <p className="text-[10px] text-slate-400 leading-relaxed mb-3">
                           {spot.description}
