@@ -937,8 +937,40 @@ const App: React.FC = () => {
     avatar: string,
     car: string,
   ) => {
+    console.log("Completing login for:", name, id);
     setIsLoggedIn(true);
     setIsLoggingIn(false);
+
+    // Initialize user data from localStorage if available
+    const savedData = localStorage.getItem(`scene_user_data_${id}`);
+    const parsedData = savedData ? JSON.parse(savedData) : null;
+
+    // Create initial user object
+    const newCurrentUser: Member = {
+      id,
+      name,
+      car,
+      location: currentUserLocation || DEFAULT_CENTER,
+      status: "Cruising",
+      avatar,
+      lastSeen: new Date().toLocaleTimeString(),
+      isFavorite: false,
+      isGhost: privacy.ghostMode,
+      privacy: privacy,
+      xp: parsedData?.xp || 0,
+      level: parsedData?.level || 1,
+      totalDistance: parsedData?.totalDistance || 0,
+      achievements: parsedData?.achievements || INITIAL_ACHIEVEMENTS,
+      photosShared: parsedData?.photosShared || 0,
+      checkpointsVisited: parsedData?.checkpointsVisited || [],
+    };
+
+    setCurrentUser(newCurrentUser);
+    setProfileForm({
+      name: newCurrentUser.name,
+      car: newCurrentUser.car || "",
+      avatar: newCurrentUser.avatar,
+    });
 
     if (emailForm.rememberMe) {
       localStorage.setItem(
@@ -947,7 +979,7 @@ const App: React.FC = () => {
       );
     }
 
-    // Initialize Supabase Realtime Channel
+    // Initialize Supabase Realtime Channel if available
     if (supabase) {
       const channel = supabase.channel("scene_main", {
         config: {
@@ -983,7 +1015,6 @@ const App: React.FC = () => {
         .on("broadcast", { event: "location_update" }, ({ payload }) => {
           const { memberId, location, isGhost, privacy: senderPrivacy, allowedViewerIds } = payload;
           
-          // If sender has restricted visibility, check if current user is allowed to see them
           if (allowedViewerIds && currentUser && !allowedViewerIds.includes(currentUser.id)) {
             setMembers(prev => prev.filter(m => m.id !== memberId));
             return;
@@ -999,15 +1030,14 @@ const App: React.FC = () => {
                     privacy: senderPrivacy,
                     lastSeen: new Date().toLocaleTimeString() 
                   }
-                : m,
-            ),
+                : m
+            )
           );
         })
         .on("broadcast", { event: "new_message" }, ({ payload }) => {
           setConversations((prev) =>
             prev.map((c) => {
               if (c.id === "group") {
-                // Prevent duplicate messages if sender also receives broadcast
                 if (c.messages.some((m) => m.id === payload.id)) return c;
                 return { ...c, messages: [...c.messages, payload] };
               }
@@ -1077,8 +1107,15 @@ const App: React.FC = () => {
             }),
           );
         })
+        .on("broadcast", { event: "cruise_update" }, ({ payload }) => {
+          setCruise(payload);
+        })
         .subscribe(async (status) => {
           if (status === "SUBSCRIBED") {
+            // Track initial presence
+            await channel.track({ user: newCurrentUser });
+            
+            // Start location updates
             navigator.geolocation.getCurrentPosition(
               async (pos) => {
                 const initialLocation: [number, number] = [
@@ -1087,74 +1124,39 @@ const App: React.FC = () => {
                 ];
                 setCurrentUserLocation(initialLocation);
                 setMapDisplayCenter(initialLocation);
-
-                const savedData = localStorage.getItem(`scene_user_data_${id}`);
-                const parsedData = savedData ? JSON.parse(savedData) : null;
-
-                const newCurrentUser: Member = {
-                  id,
-                  name,
-                  car,
-                  location: initialLocation,
-                  status: "Cruising",
-                  avatar,
-                  lastSeen: new Date().toLocaleTimeString(),
-                  isFavorite: false,
-                  isGhost: privacy.ghostMode,
-                  privacy: privacy,
-                  xp: parsedData?.xp || 0,
-                  level: parsedData?.level || 1,
-                  totalDistance: parsedData?.totalDistance || 0,
-                  achievements: parsedData?.achievements || INITIAL_ACHIEVEMENTS,
-                  photosShared: parsedData?.photosShared || 0,
-                  checkpointsVisited: parsedData?.checkpointsVisited || [],
-                };
-                setCurrentUser(newCurrentUser);
-                setProfileForm({
-                  name: newCurrentUser.name,
-                  car: newCurrentUser.car || "",
-                  avatar: newCurrentUser.avatar,
-                });
-
-                await channel.track({ user: newCurrentUser });
-                startLocationWatch(newCurrentUser.id);
+                
+                const updatedUser = { ...newCurrentUser, location: initialLocation };
+                setCurrentUser(updatedUser);
+                await channel.track({ user: updatedUser });
+                startLocationWatch(updatedUser.id);
               },
               async () => {
-                const savedData = localStorage.getItem(`scene_user_data_${id}`);
-                const parsedData = savedData ? JSON.parse(savedData) : null;
-
-                const newCurrentUser: Member = {
-                  id,
-                  name,
-                  car,
-                  location: DEFAULT_CENTER,
-                  status: "Cruising",
-                  avatar,
-                  lastSeen: new Date().toLocaleTimeString(),
-                  isFavorite: false,
-                  isGhost: privacy.ghostMode,
-                  privacy: privacy,
-                  xp: parsedData?.xp || 0,
-                  level: parsedData?.level || 1,
-                  totalDistance: parsedData?.totalDistance || 0,
-                  achievements: parsedData?.achievements || INITIAL_ACHIEVEMENTS,
-                  photosShared: parsedData?.photosShared || 0,
-                  checkpointsVisited: parsedData?.checkpointsVisited || [],
-                };
-                setCurrentUser(newCurrentUser);
-                setProfileForm({
-                  name: newCurrentUser.name,
-                  car: newCurrentUser.car || "",
-                  avatar: newCurrentUser.avatar,
-                });
+                // Geolocation failed, use default
                 setCurrentUserLocation(DEFAULT_CENTER);
                 setMapDisplayCenter(DEFAULT_CENTER);
-
-                await channel.track({ user: newCurrentUser });
-              },
+                startLocationWatch(newCurrentUser.id);
+              }
             );
           }
         });
+    } else {
+      // No Supabase, still try to get location
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const initialLocation: [number, number] = [
+            pos.coords.latitude,
+            pos.coords.longitude,
+          ];
+          setCurrentUserLocation(initialLocation);
+          setMapDisplayCenter(initialLocation);
+          setCurrentUser(prev => prev ? { ...prev, location: initialLocation } : null);
+          startLocationWatch(id);
+        },
+        () => {
+          setCurrentUserLocation(DEFAULT_CENTER);
+          setMapDisplayCenter(DEFAULT_CENTER);
+        }
+      );
     }
   };
 
@@ -1180,6 +1182,7 @@ const App: React.FC = () => {
       // Try Supabase first if configured
       if (supabase) {
         if (mode === "signup") {
+          console.log("Attempting Supabase signup for:", emailForm.email);
           const { data, error } = await supabase.auth.signUp({
             email: emailForm.email,
             password: emailForm.password,
@@ -1195,12 +1198,17 @@ const App: React.FC = () => {
           });
           if (error) throw error;
           if (data.user) {
+            console.log("Supabase signup successful:", data.user.id);
             completeLogin(
               data.user.id,
               data.user.user_metadata.name,
               data.user.user_metadata.avatar,
               data.user.user_metadata.car,
             );
+          } else {
+            console.warn("Supabase signup returned no user data");
+            setIsLoggingIn(false);
+            setLoginError("Signup failed: No user data returned. Please check your email for confirmation if required.");
           }
         } else {
           const { data, error } = await supabase.auth.signInWithPassword({
