@@ -1,5 +1,5 @@
 import express from "express";
-import { createServer as createViteServer } from "vite";
+// import { createServer as createViteServer } from "vite"; // Move to dynamic import to avoid production failure
 import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
@@ -44,7 +44,7 @@ if (supabase) {
 async function startServer() {
   const app = express();
   const PORT = 3000;
-  const USERS_FILE = path.join(__dirname, "users.json");
+  const USERS_FILE = path.join(process.cwd(), "users.json");
 
   console.log(`Starting server in ${process.env.NODE_ENV || 'development'} mode`);
 
@@ -90,11 +90,13 @@ async function startServer() {
       }
     }
 
-    // Always save to file as fallback/backup
-    try {
-      fs.writeFileSync(USERS_FILE, JSON.stringify(Array.from(registeredUsers.entries()), null, 2));
-    } catch (err) {
-      console.error("Error saving users to file:", err);
+    // Always save to file as fallback/backup (Skip on Vercel as it's read-only)
+    if (!process.env.VERCEL) {
+      try {
+        fs.writeFileSync(USERS_FILE, JSON.stringify(Array.from(registeredUsers.entries()), null, 2));
+      } catch (err) {
+        console.error("Error saving users to file:", err);
+      }
     }
   };
 
@@ -253,18 +255,29 @@ async function startServer() {
   });
 
   // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
+  if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
+    try {
+      const { createServer: createViteServer } = await import("vite");
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+    } catch (err) {
+      console.error("Failed to load Vite server:", err);
+    }
   } else {
-    const distPath = path.join(__dirname, "dist");
+    // In production (including Vercel), serve static files from dist
+    const distPath = path.join(process.cwd(), "dist");
     if (fs.existsSync(distPath)) {
       app.use(express.static(distPath));
       app.get("*", (req, res) => {
-        res.sendFile(path.join(distPath, "index.html"));
+        // Only serve index.html for non-API routes
+        if (!req.path.startsWith('/api')) {
+          res.sendFile(path.join(distPath, "index.html"));
+        } else {
+          res.status(404).json({ error: "API route not found" });
+        }
       });
     }
   }
