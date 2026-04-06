@@ -55,6 +55,11 @@ async function startServer() {
   app.get("/api/todos", async (req, res) => {
     const { createClient: createSupabaseClient } = await import("../src/utils/supabase/server");
     const supabase = createSupabaseClient(req, res);
+    
+    if (!supabase) {
+      return res.status(503).json({ error: "Supabase is not configured" });
+    }
+
     const { data: todos, error } = await supabase.from("todos").select();
     if (error) {
       return res.status(500).json({ error: error.message });

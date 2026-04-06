@@ -8,6 +8,11 @@ export default function SupabaseTest() {
 
   useEffect(() => {
     async function fetchTodos() {
+      if (!supabase) {
+        setLoading(false);
+        return;
+      }
+      
       const { data, error } = await supabase.from('todos').select();
       if (error) {
         console.error('Error fetching todos:', error);
