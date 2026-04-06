@@ -364,10 +364,12 @@ const App: React.FC = () => {
   const [taskFilters, setTaskFilters] = useState<{
     hauler: string;
     priority: string;
+    status: string;
     dateRange: { start: string; end: string };
   }>({
     hauler: "",
     priority: "",
+    status: "",
     dateRange: { start: "", end: "" },
   });
   const [shareFeedback, setShareFeedback] = useState<string | null>(null);
@@ -653,6 +655,27 @@ const App: React.FC = () => {
     });
   };
 
+  // Sync privacy settings with currentUser and broadcast updates
+  useEffect(() => {
+    if (currentUser && (currentUser.isGhost !== privacy.ghostMode || currentUser.privacy?.visibility !== privacy.visibility)) {
+      const updatedUser: Member = {
+        ...currentUser,
+        isGhost: privacy.ghostMode,
+        privacy: privacy
+      };
+      setCurrentUser(updatedUser);
+      setMembers(prev => prev.map(m => m.id === currentUser.id ? updatedUser : m));
+      
+      if (socketRef.current) {
+        socketRef.current.track({ user: updatedUser });
+        socketRef.current.send({
+          type: "broadcast",
+          event: "status_update",
+          payload: { memberId: currentUser.id, isGhost: privacy.ghostMode, privacy: privacy }
+        });
+      }
+    }
+  }, [privacy, currentUser]);
   // Cruise State
   const [cruise, setCruise] = useState<Cruise>({
     isActive: false,
@@ -1399,19 +1422,24 @@ const App: React.FC = () => {
     return tasks.filter((task) => {
       const matchesHauler = !taskFilters.hauler || task.hauler?.toLowerCase().includes(taskFilters.hauler.toLowerCase());
       const matchesPriority = !taskFilters.priority || task.priority === taskFilters.priority;
+      const matchesStatus = !taskFilters.status || task.status === taskFilters.status;
       
       let matchesDate = true;
       if (taskFilters.dateRange.start || taskFilters.dateRange.end) {
         const taskDate = new Date(task.createdAt).getTime();
         if (taskFilters.dateRange.start) {
-          matchesDate = matchesDate && taskDate >= new Date(taskFilters.dateRange.start).getTime();
+          const startDate = new Date(taskFilters.dateRange.start);
+          startDate.setHours(0, 0, 0, 0);
+          matchesDate = matchesDate && taskDate >= startDate.getTime();
         }
         if (taskFilters.dateRange.end) {
-          matchesDate = matchesDate && taskDate <= new Date(taskFilters.dateRange.end).getTime();
+          const endDate = new Date(taskFilters.dateRange.end);
+          endDate.setHours(23, 59, 59, 999);
+          matchesDate = matchesDate && taskDate <= endDate.getTime();
         }
       }
 
-      return matchesHauler && matchesPriority && matchesDate;
+      return matchesHauler && matchesPriority && matchesStatus && matchesDate;
     });
   }, [tasks, taskFilters]);
   /**
@@ -3639,88 +3667,56 @@ const App: React.FC = () => {
                 </h3>
 
                 <div className="space-y-6">
-                  {/* Ghost Mode Toggle */}
-                  <div className="p-6 bg-slate-800/30 rounded-3xl border border-white/5 flex flex-col gap-4 group hover:bg-slate-800/50 transition-all shadow-xl">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div
-                          className={`p-3 rounded-2xl transition-all ${privacy.ghostMode ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20" : "bg-slate-900 text-slate-600"}`}
-                        >
-                          <Ghost size={24} />
-                        </div>
-                        <div>
-                          <h4 className="font-black text-white italic uppercase text-sm">
-                            Ghost Mode
-                          </h4>
-                          <p className="text-[10px] text-slate-500 font-bold uppercase mt-0.5">
-                            Vanish from other maps
-                          </p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() =>
-                          setPrivacy((prev) => ({
-                            ...prev,
-                            ghostMode: !prev.ghostMode,
-                          }))
-                        }
-                        className={`w-14 h-7 rounded-full transition-all relative border border-white/5 ${privacy.ghostMode ? "bg-indigo-600 shadow-indigo-500/20 shadow-lg" : "bg-slate-900"}`}
-                      >
-                        <div
-                          className={`absolute top-1 w-5 h-5 rounded-full bg-white transition-all shadow-md ${privacy.ghostMode ? "left-8" : "left-1"}`}
-                        />
-                      </button>
-                    </div>
-                    <div
-                      className={`text-[10px] leading-relaxed p-3 rounded-xl border transition-all ${privacy.ghostMode ? "bg-indigo-500/10 border-indigo-500/20 text-indigo-300" : "bg-slate-950 border-white/5 text-slate-600"}`}
-                    >
-                      {privacy.ghostMode
-                        ? "ACTIVE: You are currently hidden from the live map. You can still see others, but your marker is ghosted."
-                        : "DISABLED: Your live location is visible to members based on your visibility settings below."}
-                    </div>
-                  </div>
-
                   {/* Visibility Controls */}
                   <div className="p-6 bg-slate-800/30 rounded-3xl border border-white/5 space-y-6 shadow-xl">
                     <div className="flex items-center gap-4">
                       <div className="p-3 rounded-2xl bg-slate-900 text-indigo-400">
-                        <Users size={24} />
+                        <Shield size={24} />
                       </div>
                       <div>
                         <h4 className="font-black text-white italic uppercase text-sm">
-                          Location Reach
+                          Location Visibility
                         </h4>
                         <p className="text-[10px] text-slate-500 font-bold uppercase mt-0.5">
-                          Who can track you
+                          Control who can see you on the map
                         </p>
                       </div>
                     </div>
 
-                    <div className="space-y-2">
-                      {(["everyone", "favorites"] as const).map((mode) => (
-                        <button
-                          key={mode}
-                          onClick={() =>
-                            setPrivacy((prev) => ({
-                              ...prev,
-                              visibility: mode,
-                            }))
-                          }
-                          className={`w-full py-4 rounded-2xl text-[11px] font-black uppercase transition-all flex items-center justify-between px-6 border ${privacy.visibility === mode ? "bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20" : "bg-slate-900 border-white/5 text-slate-600 hover:text-slate-400"}`}
-                        >
-                          <span className="flex items-center gap-2">
-                            {mode === "everyone" ? (
-                              <Eye size={16} />
-                            ) : (
-                              <ShieldCheck size={16} />
-                            )}
-                            {mode}
-                          </span>
-                          {privacy.visibility === mode && (
-                            <div className="w-2 h-2 rounded-full bg-white animate-pulse"></div>
-                          )}
-                        </button>
-                      ))}
+                    <div className="space-y-3">
+                      {[
+                        { id: 'everyone', label: 'Everyone', icon: <Eye size={18} />, desc: 'Visible to all members' },
+                        { id: 'favorites', label: 'Favorites Only', icon: <Star size={18} />, desc: 'Visible only to your favorite members' },
+                        { id: 'ghost', label: 'Ghost Mode', icon: <Ghost size={18} />, desc: 'Completely invisible to everyone' }
+                      ].map((option) => {
+                        const isActive = option.id === 'ghost' ? privacy.ghostMode : (!privacy.ghostMode && privacy.visibility === option.id);
+                        return (
+                          <button
+                            key={option.id}
+                            onClick={() => {
+                              if (option.id === 'ghost') {
+                                setPrivacy(prev => ({ ...prev, ghostMode: true }));
+                              } else {
+                                setPrivacy(prev => ({ ...prev, ghostMode: false, visibility: option.id as 'everyone' | 'favorites' }));
+                              }
+                            }}
+                            className={`w-full p-4 rounded-2xl text-left transition-all border flex items-center gap-4 ${isActive ? "bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20" : "bg-slate-900 border-white/5 text-slate-400 hover:bg-slate-800"}`}
+                          >
+                            <div className={`p-2 rounded-xl ${isActive ? "bg-white/20" : "bg-slate-800"}`}>
+                              {option.icon}
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[11px] font-black uppercase">{option.label}</span>
+                                {isActive && <div className="w-2 h-2 rounded-full bg-white animate-pulse" />}
+                              </div>
+                              <p className={`text-[9px] font-bold uppercase mt-0.5 ${isActive ? "text-indigo-100" : "text-slate-600"}`}>
+                                {option.desc}
+                              </p>
+                            </div>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>

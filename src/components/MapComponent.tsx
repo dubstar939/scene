@@ -201,10 +201,15 @@ const MapComponent: React.FC<MapComponentProps> = ({
         {members
           .filter((m) => m.status !== "Offline" && m.id !== currentUser?.id)
           .filter((m) => {
-            if (m.id === currentUser?.id) return true;
             const isFavorite = favoriteMemberIds.includes(m.id);
-            if (m.isGhost && !isFavorite) return false;
+            
+            // Ghost Mode: Invisible to everyone
+            if (m.isGhost) return false;
+            
+            // Visibility: Favorites Only
             if (m.privacy?.visibility === "favorites" && !isFavorite) return false;
+            
+            // Show Only Favorites filter (local UI filter)
             return !showOnlyFavorites || isFavorite;
           })
           .map((m) => (

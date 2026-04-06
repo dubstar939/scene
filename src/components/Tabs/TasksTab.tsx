@@ -7,11 +7,13 @@ interface TasksTabProps {
   taskFilters: {
     hauler: string;
     priority: string;
+    status: string;
     dateRange: { start: string; end: string };
   };
   setTaskFilters: React.Dispatch<React.SetStateAction<{
     hauler: string;
     priority: string;
+    status: string;
     dateRange: { start: string; end: string };
   }>>;
   handleAddTask: () => void;
@@ -51,7 +53,7 @@ const TasksTab: React.FC<TasksTabProps> = ({
 
       {/* Filters */}
       <div className="p-4 bg-slate-900/50 rounded-2xl border border-white/5 space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 block">Hauler</label>
             <input
@@ -73,6 +75,19 @@ const TasksTab: React.FC<TasksTabProps> = ({
               <option value="low">Low</option>
               <option value="medium">Medium</option>
               <option value="high">High</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 block">Status</label>
+            <select
+              value={taskFilters.status}
+              onChange={(e) => setTaskFilters(prev => ({ ...prev, status: e.target.value }))}
+              className="w-full bg-slate-800 border border-white/5 rounded-xl px-3 py-2 text-xs outline-none focus:border-indigo-500"
+            >
+              <option value="">All Statuses</option>
+              <option value="pending">Pending</option>
+              <option value="in-progress">In-Progress</option>
+              <option value="completed">Completed</option>
             </select>
           </div>
         </div>
