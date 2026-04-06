@@ -97,6 +97,7 @@ export interface Message {
   text: string;
   timestamp: string;
   isRead?: boolean;
+  reactions?: { [emoji: string]: string[] }; // emoji -> list of userIds
 }
 
 export interface Conversation {

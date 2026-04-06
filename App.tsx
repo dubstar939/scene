@@ -67,6 +67,7 @@ import {
   Maximize2,
   Mail,
   User,
+  Smile,
 } from "lucide-react";
 import MapComponent from "./src/components/MapComponent";
 import AuthComponent from "./src/components/AuthComponent";
@@ -131,7 +132,7 @@ const createMemberMapIcon = (member: Member, isLeader: boolean = false) => {
       return null;
   }
 
-  iconHtml = `<div class="${size} rounded-full border-2 ${borderColor} shadow-lg flex items-center justify-center transition-all duration-500 ${ring} ${member.isGhost ? "opacity-40 grayscale scale-90" : ""}" style="background-color: ${bgColor};">
+  iconHtml = `<div class="${size} rounded-full border-2 ${borderColor} shadow-lg flex items-center justify-center transition-all duration-500 ${ring} ${bgColor} ${member.isGhost ? "opacity-40 grayscale scale-90" : ""}">
                 ${member.isGhost ? `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 10h.01"/><path d="M15 10h.01"/><path d="M12 2a8 8 0 0 0-8 8v12l3-3 2.5 2.5L12 19l2.5 2.5L17 19l3 3V10a8 8 0 0 0-8-8z"/></svg>` : iconComponent}
               </div>`;
 
@@ -620,6 +621,7 @@ const App: React.FC = () => {
   >(null);
   const [messageInput, setMessageInput] = useState("");
   const [chatSearchQuery, setChatSearchQuery] = useState("");
+  const [reactionPickerMessageId, setReactionPickerMessageId] = useState<string | null>(null);
   const [isTyping, setIsTyping] = useState(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -942,8 +944,13 @@ const App: React.FC = () => {
     setIsLoggingIn(false);
 
     // Initialize user data from localStorage if available
-    const savedData = localStorage.getItem(`scene_user_data_${id}`);
-    const parsedData = savedData ? JSON.parse(savedData) : null;
+    let parsedData = null;
+    try {
+      const savedData = localStorage.getItem(`scene_user_data_${id}`);
+      parsedData = savedData ? JSON.parse(savedData) : null;
+    } catch (e) {
+      console.error("Error parsing saved user data:", e);
+    }
 
     // Create initial user object
     const newCurrentUser: Member = {
@@ -1107,6 +1114,35 @@ const App: React.FC = () => {
             }),
           );
         })
+        .on("broadcast", { event: "reaction_update" }, ({ payload }) => {
+          const { messageId, conversationId, emoji, userId, action } = payload;
+          setConversations((prev) =>
+            prev.map((c) => {
+              if (c.id === conversationId) {
+                return {
+                  ...c,
+                  messages: c.messages.map((m) => {
+                    if (m.id === messageId) {
+                      const reactions = { ...(m.reactions || {}) };
+                      const users = [...(reactions[emoji] || [])];
+                      if (action === "add") {
+                        if (!users.includes(userId)) users.push(userId);
+                      } else {
+                        const idx = users.indexOf(userId);
+                        if (idx > -1) users.splice(idx, 1);
+                      }
+                      if (users.length === 0) delete reactions[emoji];
+                      else reactions[emoji] = users;
+                      return { ...m, reactions };
+                    }
+                    return m;
+                  }),
+                };
+              }
+              return c;
+            }),
+          );
+        })
         .on("broadcast", { event: "cruise_update" }, ({ payload }) => {
           setCruise(payload);
         })
@@ -1179,8 +1215,10 @@ const App: React.FC = () => {
     setIsLoggingIn(true);
 
     try {
+      console.log(`Starting authentication in ${mode} mode...`);
       // Try Supabase first if configured
       if (supabase) {
+        console.log("Using Supabase for authentication.");
         if (mode === "signup") {
           console.log("Attempting Supabase signup for:", emailForm.email);
           const { data, error } = await supabase.auth.signUp({
@@ -1196,14 +1234,18 @@ const App: React.FC = () => {
               },
             },
           });
-          if (error) throw error;
+          if (error) {
+            console.error("Supabase signup error:", error);
+            throw error;
+          }
           if (data.user) {
             console.log("Supabase signup successful:", data.user.id);
+            const metadata = data.user.user_metadata || {};
             completeLogin(
               data.user.id,
-              data.user.user_metadata.name,
-              data.user.user_metadata.avatar,
-              data.user.user_metadata.car,
+              metadata.name || emailForm.name || "New Member",
+              metadata.avatar || emailForm.avatar || `https://i.pravatar.cc/150?u=${emailForm.email}`,
+              metadata.car || "New Member",
             );
           } else {
             console.warn("Supabase signup returned no user data");
@@ -1211,31 +1253,50 @@ const App: React.FC = () => {
             setLoginError("Signup failed: No user data returned. Please check your email for confirmation if required.");
           }
         } else {
+          console.log("Attempting Supabase login for:", emailForm.email);
           const { data, error } = await supabase.auth.signInWithPassword({
             email: emailForm.email,
             password: emailForm.password,
           });
-          if (error) throw error;
+          if (error) {
+            console.error("Supabase login error:", error);
+            throw error;
+          }
           if (data.user) {
+            console.log("Supabase login successful:", data.user.id);
+            const metadata = data.user.user_metadata || {};
             completeLogin(
               data.user.id,
-              data.user.user_metadata.name,
-              data.user.user_metadata.avatar,
-              data.user.user_metadata.car,
+              metadata.name || "Member",
+              metadata.avatar || `https://i.pravatar.cc/150?u=${emailForm.email}`,
+              metadata.car || "Member",
             );
+          } else {
+            console.warn("Supabase login returned no user data");
+            setIsLoggingIn(false);
+            setLoginError("Login failed: No user data returned.");
           }
         }
         return;
       }
 
+      console.log("Supabase not available, falling back to Express API.");
       // Fallback to Express API
       const endpoint =
         mode === "login" ? "/api/auth/email/login" : "/api/auth/email/signup";
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(emailForm),
+        signal: controller.signal,
       });
+      
+      clearTimeout(timeoutId);
+      console.log(`API response status: ${response.status}`);
 
       const contentType = response.headers.get("content-type");
       if (contentType && contentType.includes("application/json")) {
@@ -1605,6 +1666,57 @@ const App: React.FC = () => {
     } else {
       addXp(5); // Base XP for chatting
     }
+  };
+
+  const handleReaction = (messageId: string, emoji: string) => {
+    if (!currentUser || !activeConversationId) return;
+
+    setConversations((prev) =>
+      prev.map((c) => {
+        if (c.id === activeConversationId) {
+          return {
+            ...c,
+            messages: c.messages.map((m) => {
+              if (m.id === messageId) {
+                const reactions = { ...(m.reactions || {}) };
+                const users = [...(reactions[emoji] || [])];
+                const action = users.includes(currentUser.id) ? "remove" : "add";
+
+                if (action === "add") {
+                  users.push(currentUser.id);
+                } else {
+                  const idx = users.indexOf(currentUser.id);
+                  if (idx > -1) users.splice(idx, 1);
+                }
+
+                if (users.length === 0) delete reactions[emoji];
+                else reactions[emoji] = users;
+
+                // Broadcast reaction
+                if (socketRef.current) {
+                  socketRef.current.send({
+                    type: "broadcast",
+                    event: "reaction_update",
+                    payload: {
+                      messageId,
+                      conversationId: activeConversationId,
+                      emoji,
+                      userId: currentUser.id,
+                      action,
+                    },
+                  });
+                }
+
+                return { ...m, reactions };
+              }
+              return m;
+            }),
+          };
+        }
+        return c;
+      }),
+    );
+    setReactionPickerMessageId(null);
   };
 
   const handleTyping = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2964,6 +3076,7 @@ const App: React.FC = () => {
                     key={c.id}
                     onClick={() => {
                       setActiveConversationId(c.id);
+                      setReactionPickerMessageId(null);
                     }}
                     className={`flex-shrink-0 px-4 py-2 rounded-xl border text-[10px] font-black uppercase transition-all relative ${activeConversationId === c.id ? "bg-indigo-600 border-indigo-500 text-white shadow-lg" : "bg-slate-800/50 border-white/5 text-slate-500"}`}
                   >
@@ -3008,7 +3121,7 @@ const App: React.FC = () => {
                       .map((msg) => (
                         <div
                           key={msg.id}
-                          className={`flex flex-col ${msg.senderId === currentUser?.id ? "items-end" : "items-start"}`}
+                          className={`flex flex-col group/msg ${msg.senderId === currentUser?.id ? "items-end" : "items-start"}`}
                         >
                           <div className="flex items-center gap-2 mb-1">
                             {msg.senderId !== currentUser?.id && (
@@ -3017,33 +3130,83 @@ const App: React.FC = () => {
                               </span>
                             )}
                           </div>
-                          <div
-                            className={`max-w-[85%] p-3 rounded-2xl text-xs font-medium relative ${msg.senderId === currentUser?.id ? "bg-indigo-600 text-white rounded-tr-none" : "bg-slate-700/50 text-slate-200 rounded-tl-none border border-white/5"}`}
-                          >
-                            {msg.text.includes("google.com/maps") ? (
-                              <div className="space-y-2">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <MapPin size={12} />
-                                  <span className="font-black uppercase text-[8px] tracking-widest">
-                                    Shared Location
-                                  </span>
+                          <div className="relative flex items-center gap-2 group">
+                            {msg.senderId === currentUser?.id && (
+                              <button
+                                onClick={() => setReactionPickerMessageId(reactionPickerMessageId === msg.id ? null : msg.id)}
+                                className="opacity-0 group-hover:opacity-100 p-1.5 rounded-full bg-slate-800 border border-white/10 text-slate-400 hover:text-indigo-400 transition-all"
+                              >
+                                <Smile size={12} />
+                              </button>
+                            )}
+                            <div
+                              className={`max-w-[85%] p-3 rounded-2xl text-xs font-medium relative ${msg.senderId === currentUser?.id ? "bg-indigo-600 text-white rounded-tr-none" : "bg-slate-700/50 text-slate-200 rounded-tl-none border border-white/5"}`}
+                            >
+                              {msg.text.includes("google.com/maps") ? (
+                                <div className="space-y-2">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <MapPin size={12} />
+                                    <span className="font-black uppercase text-[8px] tracking-widest">
+                                      Shared Location
+                                    </span>
+                                  </div>
+                                  <p className="leading-tight text-[11px] mb-2">
+                                    {msg.text.split(": ")[0]}:
+                                  </p>
+                                  <a
+                                    href={msg.text.split(": ")[1]}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className={`block p-2 rounded-xl border text-center font-bold text-[10px] uppercase transition-all ${msg.senderId === currentUser?.id ? "bg-white/10 border-white/20 text-white" : "bg-indigo-600 border-indigo-400 text-white shadow-lg shadow-indigo-500/10"}`}
+                                  >
+                                    View on Map
+                                  </a>
                                 </div>
-                                <p className="leading-tight text-[11px] mb-2">
-                                  {msg.text.split(": ")[0]}:
-                                </p>
-                                <a
-                                  href={msg.text.split(": ")[1]}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className={`block p-2 rounded-xl border text-center font-bold text-[10px] uppercase transition-all ${msg.senderId === currentUser?.id ? "bg-white/10 border-white/20 text-white" : "bg-indigo-600 border-indigo-400 text-white shadow-lg shadow-indigo-500/10"}`}
-                                >
-                                  View on Map
-                                </a>
+                              ) : (
+                                msg.text
+                              )}
+                            </div>
+                            {msg.senderId !== currentUser?.id && (
+                              <button
+                                onClick={() => setReactionPickerMessageId(reactionPickerMessageId === msg.id ? null : msg.id)}
+                                className="opacity-0 group-hover:opacity-100 p-1.5 rounded-full bg-slate-800 border border-white/10 text-slate-400 hover:text-indigo-400 transition-all"
+                              >
+                                <Smile size={12} />
+                              </button>
+                            )}
+
+                            {/* Reaction Picker Popover */}
+                            {reactionPickerMessageId === msg.id && (
+                              <div className={`absolute bottom-full mb-2 p-2 bg-slate-800 border border-white/10 rounded-2xl shadow-2xl flex gap-2 z-50 animate-in zoom-in-95 duration-200 ${msg.senderId === currentUser?.id ? "right-0" : "left-0"}`}>
+                                {["🔥", "🚗", "💯", "🙌", "📍", "🏎️"].map((emoji) => (
+                                  <button
+                                    key={emoji}
+                                    onClick={() => handleReaction(msg.id, emoji)}
+                                    className={`w-8 h-8 flex items-center justify-center rounded-xl hover:bg-white/5 transition-all text-lg ${(msg.reactions?.[emoji] as string[] | undefined)?.includes(currentUser?.id || "") ? "bg-indigo-600/20 border border-indigo-500/50" : ""}`}
+                                  >
+                                    {emoji}
+                                  </button>
+                                ))}
                               </div>
-                            ) : (
-                              msg.text
                             )}
                           </div>
+
+                          {/* Reactions Display */}
+                          {msg.reactions && Object.keys(msg.reactions).length > 0 && (
+                            <div className={`flex flex-wrap gap-1 mt-1 ${msg.senderId === currentUser?.id ? "justify-end" : "justify-start"}`}>
+                              {(Object.entries(msg.reactions) as [string, string[]][]).map(([emoji, users]) => (
+                                <button
+                                  key={emoji}
+                                  onClick={() => handleReaction(msg.id, emoji)}
+                                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-[10px] font-bold transition-all ${users.includes(currentUser?.id || "") ? "bg-indigo-600/20 border-indigo-500/50 text-indigo-400" : "bg-slate-800/50 border-white/5 text-slate-400"}`}
+                                >
+                                  <span>{emoji}</span>
+                                  <span>{users.length}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+
                           <div className="flex items-center gap-2 mt-1">
                             <span className="text-[8px] text-slate-500 font-bold uppercase tracking-wider">
                               {msg.timestamp}
