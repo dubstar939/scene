@@ -21,6 +21,7 @@ export interface Achievement {
 
 export interface Member {
   id: string;
+  email?: string;
   name: string;
   car?: string;
   location: [number, number];

@@ -948,8 +948,8 @@ const App: React.FC = () => {
     const savedUser = localStorage.getItem("scene_remembered_user");
     if (savedUser) {
       try {
-        const { id, name, avatar, car } = JSON.parse(savedUser);
-        completeLogin(id, name, avatar, car);
+        const { id, name, avatar, car, email } = JSON.parse(savedUser);
+        completeLogin(id, name, avatar, car, email);
       } catch (e) {
         localStorage.removeItem("scene_remembered_user");
       }
@@ -961,8 +961,9 @@ const App: React.FC = () => {
     name: string,
     avatar: string,
     car: string,
+    email?: string,
   ) => {
-    console.log("Completing login for:", name, id);
+    console.log("Completing login for:", name, id, email);
     setIsLoggedIn(true);
     setIsLoggingIn(false);
 
@@ -978,6 +979,7 @@ const App: React.FC = () => {
     // Create initial user object
     const newCurrentUser: Member = {
       id,
+      email,
       name,
       car,
       location: currentUserLocation || DEFAULT_CENTER,
@@ -1269,6 +1271,7 @@ const App: React.FC = () => {
               metadata.name || emailForm.name || "New Member",
               metadata.avatar || emailForm.avatar || `https://i.pravatar.cc/150?u=${emailForm.email}`,
               metadata.car || "New Member",
+              data.user.email,
             );
           } else {
             console.warn("Supabase signup returned no user data");
@@ -1293,6 +1296,7 @@ const App: React.FC = () => {
               metadata.name || "Member",
               metadata.avatar || `https://i.pravatar.cc/150?u=${emailForm.email}`,
               metadata.car || "Member",
+              data.user.email,
             );
           } else {
             console.warn("Supabase login returned no user data");
@@ -1331,6 +1335,7 @@ const App: React.FC = () => {
           data.user.name,
           data.user.avatar,
           data.user.car,
+          data.user.email,
         );
       } else {
         const text = await response.text();
@@ -1829,6 +1834,7 @@ const App: React.FC = () => {
     
     const updatedData = {
       id: currentUser.id,
+      email: currentUser.email,
       name: profileForm.name || currentUser.name,
       car: profileForm.car,
       avatar: profileForm.avatar || currentUser.avatar,

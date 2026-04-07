@@ -69,7 +69,8 @@ async function startServer() {
 
   console.log(`Starting server in ${process.env.NODE_ENV || 'development'} mode`);
 
-  const registeredUsers = new Map(); // email -> user data (used as cache if supabase exists)
+  const registeredUsers = new Map(); // id -> user data
+  const emailToId = new Map(); // email -> id
 
   // Load users from file (Initial load or fallback)
   const loadUsersFromFile = () => {
@@ -77,8 +78,11 @@ async function startServer() {
       if (fs.existsSync(USERS_FILE)) {
         const data = fs.readFileSync(USERS_FILE, "utf-8");
         const usersArray = JSON.parse(data);
-        usersArray.forEach(([email, user]: [string, any]) => {
-          registeredUsers.set(email, user);
+        usersArray.forEach(([key, user]: [string, any]) => {
+          registeredUsers.set(user.id, user);
+          if (user.email) {
+            emailToId.set(user.email, user.id);
+          }
         });
         console.log(`Loaded ${registeredUsers.size} users from ${USERS_FILE}`);
       }
@@ -90,10 +94,13 @@ async function startServer() {
   loadUsersFromFile();
 
   const saveUser = async (user: any) => {
-    registeredUsers.set(user.email, user);
+    registeredUsers.set(user.id, user);
+    if (user.email) {
+      emailToId.set(user.email, user.id);
+    }
     
-    // Save to Supabase if available
-    if (supabase) {
+    // Save to Supabase if available and not a guest
+    if (supabase && !user.id.startsWith('guest-')) {
       try {
         const { error } = await supabase
           .from('users')
@@ -123,8 +130,8 @@ async function startServer() {
 
   const getUserByEmail = async (email: string) => {
     // Check cache first
-    if (registeredUsers.has(email)) {
-      return registeredUsers.get(email);
+    if (emailToId.has(email)) {
+      return registeredUsers.get(emailToId.get(email));
     }
 
     // If supabase available, check there
@@ -137,7 +144,8 @@ async function startServer() {
           .single();
         
         if (data) {
-          registeredUsers.set(email, data); // Cache it
+          registeredUsers.set(data.id, data); // Cache it
+          emailToId.set(email, data.id);
           return data;
         }
       } catch (err: any) {
@@ -220,37 +228,74 @@ async function startServer() {
   });
 
   apiRouter.post("/profile/update", async (req, res) => {
-    const { id, name, avatar, car } = req.body;
+    const { id, name, avatar, car, email: reqEmail } = req.body;
     if (!id) {
       return res.status(400).json({ error: "User ID is required" });
     }
 
-    // In a real app, we would verify the session/token here
-    
     try {
       // Find user by ID
       let user = null;
-      if (supabase) {
-        const { data, error } = await supabase
-          .from('users')
-          .select('*')
-          .eq('id', id)
-          .single();
-        if (data) user = data;
-      } else {
-        user = Array.from(registeredUsers.values()).find((u: any) => u.id === id);
+      let email = reqEmail;
+
+      // 1. Try Supabase if available and not a guest
+      if (supabase && !id.startsWith('guest-')) {
+        try {
+          const { data, error } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', id)
+            .single();
+          if (data) user = data;
+        } catch (err) {
+          console.error("Supabase profile fetch error:", err);
+        }
       }
 
+      // 2. Try local cache if not found in Supabase
       if (!user) {
+        user = registeredUsers.get(id);
+      }
+
+      // 3. If still not found, check if authenticated via Supabase Auth
+      if (!user && supabase && !id.startsWith('guest-')) {
+        try {
+          const { createClient: createSupabaseClient } = await import("../src/utils/supabase/server");
+          const supabaseServer = createSupabaseClient(req, res);
+          if (supabaseServer) {
+            const { data: { user: authUser } } = await supabaseServer.auth.getUser();
+            if (authUser && authUser.id === id) {
+              email = authUser.email;
+            }
+          }
+        } catch (err) {
+          console.error("Supabase auth check error:", err);
+        }
+      }
+
+      if (!user && !email) {
         return res.status(404).json({ error: "User not found" });
       }
 
       const updatedUser = {
-        ...user,
-        name: name || user.name,
-        avatar: avatar || user.avatar,
-        car: car !== undefined ? car : user.car
+        ...(user || {}),
+        id: id,
+        email: email || (user ? user.email : null),
+        name: name || (user ? user.name : "New Member"),
+        avatar: avatar || (user ? user.avatar : `https://i.pravatar.cc/150?u=${id}`),
+        car: car !== undefined ? car : (user ? user.car : "New Member")
       };
+
+      // Ensure we have an email for the record (unless it's a guest, but guests should be in registeredUsers)
+      if (!updatedUser.email && !id.startsWith('guest-')) {
+        // Try to find by ID in registeredUsers one last time if it's not a guest but has no email
+        const cachedUser = registeredUsers.get(id);
+        if (cachedUser && cachedUser.email) {
+          updatedUser.email = cachedUser.email;
+        } else {
+          return res.status(400).json({ error: "User email is required for profile update" });
+        }
+      }
 
       await saveUser(updatedUser);
       const { password: _, ...userWithoutPassword } = updatedUser;
