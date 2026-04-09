@@ -4,6 +4,7 @@ import React, {
   useCallback,
   useMemo,
   useRef,
+  memo,
 } from "react";
 import {
   MapContainer,
@@ -590,6 +591,32 @@ const App: React.FC = () => {
   const [memberSearchQuery, setMemberSearchQuery] = useState("");
   const [memberStatusFilter, setMemberStatusFilter] = useState("All");
   const [memberCarFilter, setMemberCarFilter] = useState("All");
+
+  // Memoized filtered members list for performance
+  const filteredMembers = useMemo(() => {
+    return members
+      .filter(
+        (m) => m.id !== currentUser?.id && m.status !== "Offline",
+      )
+      .filter(
+        (m) =>
+          !showOnlyFavorites || favoriteMemberIds.includes(m.id),
+      )
+      .filter(
+        (m) =>
+          memberStatusFilter === "All" ||
+          m.status === memberStatusFilter,
+      )
+      .filter(
+        (m) =>
+          memberCarFilter === "All" || m.car === memberCarFilter,
+      )
+      .filter((m) =>
+        m.name
+          .toLowerCase()
+          .includes(memberSearchQuery.toLowerCase()),
+      );
+  }, [members, currentUser, showOnlyFavorites, favoriteMemberIds, memberStatusFilter, memberCarFilter, memberSearchQuery]);
 
   const uniqueStatuses = useMemo(() => {
     const statuses = new Set(members.map((m) => m.status).filter(Boolean));
@@ -2461,29 +2488,7 @@ const App: React.FC = () => {
               </div>
 
               <div className="space-y-4">
-                {members
-                  .filter(
-                    (m) => m.id !== currentUser?.id && m.status !== "Offline",
-                  )
-                  .filter(
-                    (m) =>
-                      !showOnlyFavorites || favoriteMemberIds.includes(m.id),
-                  )
-                  .filter(
-                    (m) =>
-                      memberStatusFilter === "All" ||
-                      m.status === memberStatusFilter,
-                  )
-                  .filter(
-                    (m) =>
-                      memberCarFilter === "All" || m.car === memberCarFilter,
-                  )
-                  .filter((m) =>
-                    m.name
-                      .toLowerCase()
-                      .includes(memberSearchQuery.toLowerCase()),
-                  )
-                  .map((m) => (
+                {filteredMembers.map((m) => (
                     <div
                       key={m.id}
                       className="p-4 bg-slate-800/30 rounded-3xl border border-white/5 flex flex-col gap-3 relative overflow-hidden group hover:bg-slate-800/50 transition-all"
@@ -2571,19 +2576,7 @@ const App: React.FC = () => {
                       )}
                     </div>
                   ))}
-                {members
-                  .filter(
-                    (m) => m.id !== currentUser?.id && m.status !== "Offline",
-                  )
-                  .filter(
-                    (m) =>
-                      !showOnlyFavorites || favoriteMemberIds.includes(m.id),
-                  )
-                  .filter((m) =>
-                    m.name
-                      .toLowerCase()
-                      .includes(memberSearchQuery.toLowerCase()),
-                  ).length === 0 && (
+                {filteredMembers.length === 0 && (
                   <div className="text-center py-10 space-y-2">
                     <p className="text-slate-600 font-black uppercase text-[10px] tracking-widest">
                       {memberSearchQuery
@@ -3456,9 +3449,10 @@ const App: React.FC = () => {
                 </h3>
 
                 <div className="space-y-3">
-                  {members
-                    .sort((a, b) => (b.xp || 0) - (a.xp || 0))
-                    .map((member, index) => (
+                  {useMemo(() => 
+                    [...members].sort((a, b) => (b.xp || 0) - (a.xp || 0)),
+                    [members]
+                  ).map((member, index) => (
                       <div
                         key={member.id}
                         className={`p-4 rounded-2xl border transition-all flex items-center gap-4 ${
