@@ -7,7 +7,7 @@ import {
 } from "react-leaflet";
 import L from "leaflet";
 import { Car, MessageSquare, Navigation, Trash2, Eye, Ghost, Maximize2 } from "lucide-react";
-import { Member, Spot } from "../types";
+import { Member, Spot } from "../../types";
 
 interface MapComponentProps {
   center: [number, number];

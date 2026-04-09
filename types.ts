@@ -1,3 +1,5 @@
+// Shared type definitions for the Scene application
+// Consolidated from types.ts and src/types.ts
 
 declare global {
   interface Window {
@@ -19,13 +21,18 @@ export interface Achievement {
   progress: number;
 }
 
+export interface PrivacySettings {
+  ghostMode: boolean;
+  visibility: 'everyone' | 'favorites' | 'public' | 'private';
+}
+
 export interface Member {
   id: string;
   email?: string;
   name: string;
   car?: string;
   location: [number, number];
-  status: 'Cruising' | 'Parked' | 'Heading to meet' | 'At Meetup' | 'On Detour' | 'Offline';
+  status: 'Cruising' | 'Parked' | 'Heading to meet' | 'At Meetup' | 'On Detour' | 'Offline' | 'Online';
   avatar: string;
   lastSeen: string;
   isFavorite?: boolean;
@@ -49,24 +56,8 @@ export interface Spot {
   description?: string;
   imageUrl?: string;
   photo?: string;
-  createdBy?: string;
-  createdAt?: string;
-}
-
-export interface PrivacySettings {
-  ghostMode: boolean;
-  visibility: 'everyone' | 'favorites';
-}
-
-export interface AppState {
-  isLoggedIn: boolean;
-  currentUser: Member | null;
-  userLocation: [number, number] | null;
-  members: Member[];
-  contacts: Contact[];
-  tasks: Task[];
-  loading: boolean;
-  error: string | null;
+  createdBy: string;
+  createdAt: string;
 }
 
 export interface Contact {
@@ -115,6 +106,7 @@ export interface Cruise {
   isActive: boolean;
   leaderId: 'user' | string | null;
   route: [number, number][];
+  participants?: string[];
 }
 
 export interface Reminder {
@@ -130,4 +122,15 @@ export interface Reminder {
   alertFired?: boolean;
   recurring?: 'none' | 'daily' | 'weekly' | 'monthly';
   alertSound?: 'default' | 'engine' | 'turbo' | 'horn';
+}
+
+export interface AppState {
+  isLoggedIn: boolean;
+  currentUser: Member | null;
+  userLocation: [number, number] | null;
+  members: Member[];
+  contacts: Contact[];
+  tasks: Task[];
+  loading: boolean;
+  error: string | null;
 }
