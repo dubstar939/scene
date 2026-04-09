@@ -1,6 +1,6 @@
 import React from "react";
 import { Plus, Contact as ContactIcon } from "lucide-react";
-import { Contact } from "../../../types";
+import { Contact } from "../../../../types";
 
 interface ContactsTabProps {
   contacts: Contact[];

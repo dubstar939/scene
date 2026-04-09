@@ -1,12 +1,16 @@
 import { createServerClient } from "@supabase/ssr";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY || process.env.SUPABASE_ANON_KEY;
+import { getSupabaseConfig } from "./config";
 
 export const supabaseMiddleware = async (req: any, res: any, next: any) => {
+  const config = getSupabaseConfig();
+  
+  if (!config.isValid) {
+    return next();
+  }
+  
   const supabase = createServerClient(
-    supabaseUrl!,
-    supabaseKey!,
+    config.url!,
+    config.key!,
     {
       cookies: {
         getAll() {
